@@ -10,6 +10,7 @@ interface UVData {
   peakHours: string;
   hourlyForecast: { time: string; uv: number }[];
   locationName: string;
+  uvLoading: boolean;
 }
 
 interface AppContextType {
@@ -39,32 +40,52 @@ function getUVRisk(uv: number) {
   return { level: "Extreme", color: "#9810FA" };
 }
 
-// Mock hourly UV forecast data (US1.2)
-function generateForecast(baseUV: number): { time: string; uv: number }[] {
-  const now = new Date();
-  const hour = now.getHours();
-  const data: { time: string; uv: number }[] = [];
-  
-  // Create a realistic-looking bell curve based on the baseUV at solar noon
-  for (let i = 0; i < 12; i++) {
-    const h = (hour + i) % 24;
-    const label = `${String(h).padStart(2, "0")}:00`;
-    let uv = 0;
-    
-    // Simulate sun curve peaking around 13:00 (1 PM)
-    if (h >= 6 && h <= 19) {
-      // Distance from peak
-      const dist = Math.abs(h - 13);
-      // Bell curveish multiplier (drops off as dist increases)
-      const factor = Math.max(0, 1 - (dist / 7));
-      // Base variation and noise
-      uv = baseUV * Math.sin(factor * (Math.PI / 2));
-    }
-    
-    uv = Math.max(0, Math.round(uv * 10) / 10);
-    data.push({ time: label, uv });
+// Derive peak hours from hourly forecast (hours where UV >= 6)
+function derivePeakHours(forecast: { time: string; uv: number }[]): string {
+  const peakSlots = forecast.filter((h) => h.uv >= 6).map((h) => h.time.replace(":00", ""));
+  if (peakSlots.length === 0) return "No peak hours today";
+  if (peakSlots.length === 1) return `${peakSlots[0]}:00`;
+  return `${peakSlots[0]}:00 – ${peakSlots[peakSlots.length - 1]}:00`;
+}
+
+const OW_API_KEY = import.meta.env.VITE_OPENWEATHER_API_KEY;
+
+// Fetch real UV index + hourly forecast from OpenWeatherMap
+async function fetchUVData(
+  lat: number,
+  lon: number
+): Promise<{ currentUV: number; hourlyForecast: { time: string; uv: number }[] }> {
+  if (!OW_API_KEY) {
+    throw new Error("VITE_OPENWEATHER_API_KEY is not set in .env");
   }
-  return data;
+
+  // Use the One Call API 3.0 for current + hourly UV
+  // Falls back to One Call 2.5 if 3.0 subscription is not active
+  const url = `https://api.openweathermap.org/data/3.0/onecall?lat=${lat}&lon=${lon}&exclude=minutely,daily,alerts&appid=${OW_API_KEY}&units=metric`;
+
+  const res = await fetch(url);
+  if (!res.ok) {
+    throw new Error(`OpenWeatherMap API error: ${res.status}`);
+  }
+
+  const data = await res.json();
+
+  const currentUV = Math.round(data.current.uvi * 10) / 10;
+
+  // Build 12-hour hourly forecast from now
+  const now = new Date();
+  const currentHour = now.getHours();
+  const hourlyForecast = (data.hourly as any[])
+    .slice(0, 12)
+    .map((h: any, i: number) => {
+      const hour = (currentHour + i) % 24;
+      return {
+        time: `${String(hour).padStart(2, "0")}:00`,
+        uv: Math.round((h.uvi ?? 0) * 10) / 10,
+      };
+    });
+
+  return { currentUV, hourlyForecast };
 }
 
 export default function Layout() {
@@ -72,16 +93,20 @@ export default function Layout() {
   const [skinType, setSkinType] = useState(3);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [username, setUsername] = useState("");
-  
-  // Location/UV state
-  const [currentLocation, setCurrentLocation] = useState("Melbourne, AU");
-  const [currentUV, setCurrentUV] = useState(6);
 
+  // Location/UV state
+  const [currentLocation, setCurrentLocation] = useState("Detecting location...");
+  const [currentUV, setCurrentUV] = useState(0);
+  const [hourlyForecast, setHourlyForecast] = useState<{ time: string; uv: number }[]>([]);
+  const [uvLoading, setUvLoading] = useState(true);
+
+  // Allow map pin to override UV and location
   const setUVDataOverrides = (uv: number, locationName: string) => {
     setCurrentUV(uv);
     setCurrentLocation(locationName);
   };
 
+  // On mount: check login, then get real UV data via geolocation
   useEffect(() => {
     const stored = localStorage.getItem("sunguard_loggedin");
     const storedUser = localStorage.getItem("sunguard_username");
@@ -90,8 +115,56 @@ export default function Layout() {
       setUsername(storedUser);
     } else {
       navigate("/login");
+      return;
     }
+
+    // Try to get real UV via geolocation
+    if (!navigator.geolocation) {
+      // Geolocation not supported — fallback to Melbourne
+      loadUVForCoords(-37.8136, 144.9631, "Melbourne, AU");
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const { latitude: lat, longitude: lon } = pos.coords;
+        // Reverse geocode for display name using Nominatim (free, no key needed)
+        fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json`)
+          .then((r) => r.json())
+          .then((geo) => {
+            const addr = geo.address || {};
+            const city =
+              addr.suburb || addr.city || addr.town || addr.village || addr.county || "Your Location";
+            const state = addr.state || "";
+            const locationName = state ? `${city}, ${state}` : city;
+            loadUVForCoords(lat, lon, locationName);
+          })
+          .catch(() => loadUVForCoords(lat, lon, "Your Location"));
+      },
+      () => {
+        // Permission denied or error — fallback to Melbourne
+        loadUVForCoords(-37.8136, 144.9631, "Melbourne, AU (default)");
+      },
+      { enableHighAccuracy: false, timeout: 8000 }
+    );
   }, [navigate]);
+
+  async function loadUVForCoords(lat: number, lon: number, locationName: string) {
+    setUvLoading(true);
+    setCurrentLocation(locationName);
+    try {
+      const { currentUV: uv, hourlyForecast: forecast } = await fetchUVData(lat, lon);
+      setCurrentUV(uv);
+      setHourlyForecast(forecast);
+    } catch (err) {
+      console.error("Failed to fetch UV data from OpenWeatherMap:", err);
+      // Fallback: set a neutral UV of 0 and empty forecast
+      setCurrentUV(0);
+      setHourlyForecast([]);
+    } finally {
+      setUvLoading(false);
+    }
+  }
 
   const handleLogout = () => {
     localStorage.removeItem("sunguard_loggedin");
@@ -101,16 +174,17 @@ export default function Layout() {
     navigate("/");
   };
 
-  const forecast = generateForecast(currentUV);
   const risk = getUVRisk(currentUV);
+  const peakHours = derivePeakHours(hourlyForecast);
 
   const uvData: UVData = {
     currentUV,
     riskLevel: risk.level,
     riskColor: risk.color,
-    peakHours: "10-4",
-    hourlyForecast: forecast,
+    peakHours,
+    hourlyForecast,
     locationName: currentLocation,
+    uvLoading,
   };
 
   const navItems = [
@@ -177,7 +251,7 @@ export default function Layout() {
                 </NavLink>
               ))}
 
-              {/* About link — goes to landing/home page */}
+              {/* About link */}
               <Link
                 to="/"
                 className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-[14px] transition-colors text-[#4a5565] hover:bg-blue-50 hover:text-[#155dfc]"
@@ -187,10 +261,8 @@ export default function Layout() {
                 About
               </Link>
 
-              {/* Divider */}
               <div className="w-px h-6 bg-gray-200 mx-1" />
 
-              {/* Logout button */}
               <button
                 onClick={handleLogout}
                 className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-[14px] transition-colors text-[#4a5565] hover:bg-red-50 hover:text-red-600 cursor-pointer"

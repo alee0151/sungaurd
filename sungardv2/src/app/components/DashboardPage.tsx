@@ -35,7 +35,42 @@ type SunscreenRecommendation = {
   riskLevel: string;
   spfLevel: string;
   advice: string;
-  };
+};
+
+// Fallback recommendation when backend is unavailable
+function getFallbackRecommendation(uv: number): SunscreenRecommendation {
+  if (uv <= 2) {
+    return {
+      riskLevel: "Low",
+      spfLevel: "SPF 15+",
+      advice: "Minimal protection needed. SPF 15 is sufficient for most people during low UV periods.",
+    };
+  } else if (uv <= 5) {
+    return {
+      riskLevel: "Moderate",
+      spfLevel: "SPF 30+",
+      advice: "Apply SPF 30+ sunscreen. Wear a hat and sunglasses when outdoors for extended periods.",
+    };
+  } else if (uv <= 7) {
+    return {
+      riskLevel: "High",
+      spfLevel: "SPF 50+",
+      advice: "SPF 50+ is strongly recommended. Seek shade during peak hours and reapply every 2 hours.",
+    };
+  } else if (uv <= 10) {
+    return {
+      riskLevel: "Very High",
+      spfLevel: "SPF 50+",
+      advice: "Maximum protection required. Minimize outdoor exposure, wear protective clothing, and reapply SPF 50+ every 2 hours.",
+    };
+  } else {
+    return {
+      riskLevel: "Extreme",
+      spfLevel: "SPF 50+",
+      advice: "Extreme UV levels. Avoid outdoor exposure where possible. If outside, full protective clothing and SPF 50+ are essential.",
+    };
+  }
+}
 
 const backendUrl = import.meta.env.VITE_BACKEND_URL;
 
@@ -43,34 +78,39 @@ export default function DashboardPage() {
   const { uvData, setUVDataOverrides } = useAppContext();
   const { currentUV, riskLevel, riskColor, peakHours, hourlyForecast, locationName } = uvData;
   const [sunscreenRec, setSunscreenRec] = useState<SunscreenRecommendation | null>(null);
+  const [recSource, setRecSource] = useState<"backend" | "fallback" | "loading">("loading");
 
-useEffect(() => {
-  async function fetchRecommendation() {
-    if (!backendUrl) {
-      console.error("VITE_BACKEND_URL is not defined");
-      setSunscreenRec(null);
-      return;
-    }
-
-    try {
-      const response = await fetch(
-        `${backendUrl}/uv/recommendation?uvLevel=${currentUV}`
-      );
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+  useEffect(() => {
+    async function fetchRecommendation() {
+      // If no backend URL is configured, use fallback immediately
+      if (!backendUrl) {
+        console.warn("VITE_BACKEND_URL is not defined — using built-in fallback recommendation.");
+        setSunscreenRec(getFallbackRecommendation(currentUV));
+        setRecSource("fallback");
+        return;
       }
 
-      const data = await response.json();
-      setSunscreenRec(data);
-    } catch (error) {
-      console.error("Failed to fetch sunscreen recommendation:", error);
-      setSunscreenRec(null);
-    }
-  }
+      try {
+        const response = await fetch(
+          `${backendUrl}/uv/recommendation?uvLevel=${currentUV}`
+        );
 
-  fetchRecommendation();
-}, [currentUV]);
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const data = await response.json();
+        setSunscreenRec(data);
+        setRecSource("backend");
+      } catch (error) {
+        console.warn("Backend unavailable — using built-in fallback recommendation.", error);
+        setSunscreenRec(getFallbackRecommendation(currentUV));
+        setRecSource("fallback");
+      }
+    }
+
+    fetchRecommendation();
+  }, [currentUV]);
 
   // Read user's saved location from onboarding (if any)
   const savedLocation = localStorage.getItem("sunguard_location") || undefined;
@@ -263,8 +303,8 @@ useEffect(() => {
           Pinpoint a location to get local UV details
         </p>
         <div className="h-[400px]">
-          <UVMap 
-            currentUv={currentUV} 
+          <UVMap
+            currentUv={currentUV}
             onLocationSelect={(uv, name) => setUVDataOverrides(uv, name)}
             initialLocation={savedLocation}
           />
@@ -273,20 +313,29 @@ useEffect(() => {
 
       {/* US3.2 - Sunscreen Recommendation */}
       <div className="bg-white rounded-2xl border border-black/10 p-6">
-        <h3 className="text-[#0a0a0a] text-[16px]" style={{ fontWeight: 500 }}>
-          Sunscreen Recommendation
-        </h3>
-        <p className="text-[#717182] text-[14px] mt-1">Based on current UV index</p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-[#0a0a0a] text-[16px]" style={{ fontWeight: 500 }}>
+              Sunscreen Recommendation
+            </h3>
+            <p className="text-[#717182] text-[14px] mt-1">Based on current UV index</p>
+          </div>
+          {recSource === "fallback" && (
+            <span className="text-[11px] text-[#6a7282] bg-gray-100 px-2 py-1 rounded-lg border border-black/5">
+              Built-in data
+            </span>
+          )}
+        </div>
         <div className="mt-4 bg-[#fff7ed] rounded-xl px-5 py-4 flex items-start gap-3">
           <Sun size={20} className="text-[#F54900] mt-0.5 shrink-0" />
           <div>
             <p className="text-[#101828] text-[14px]" style={{ fontWeight: 600 }}>
               {sunscreenRec
-              ? `${sunscreenRec.spfLevel} strongly recommended for ${riskLevel.toLowerCase()} UV levels.`
-              : "Loading recommendation..."}
+                ? `${sunscreenRec.spfLevel} strongly recommended for ${riskLevel.toLowerCase()} UV levels.`
+                : "Loading recommendation..."}
             </p>
             <p className="text-[#4a5565] text-[14px] mt-1">
-              {sunscreenRec ? sunscreenRec.advice : "Please wait while we load advice."}
+              {sunscreenRec ? sunscreenRec.advice : "Calculating advice based on current UV index..."}
             </p>
           </div>
         </div>

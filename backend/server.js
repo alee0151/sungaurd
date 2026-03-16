@@ -37,3 +37,7 @@ initDb().then(() => {
     console.log(`[server] Running on port ${PORT}`);
   });
 });
+
+const educationRoutes = require('./routes/educationRoutes');
+app.use('/education', educationRoutes);
+

@@ -85,23 +85,27 @@ exports.getMelanomaCases = async (req, res) => {
   try {
     const result = await pool.query(`
       SELECT
-        year::int         AS year,
-        SUM(count)::int   AS cases
+        "Year"::int         AS year,
+        SUM("Count")::int   AS cases
       FROM melanoma_cases
       WHERE
-        data_type      = 'Incidence'
-        AND sex        = 'Persons'
-        AND state_territory = 'Australia'
-        AND year::int  <= 2019
-        AND count      IS NOT NULL
+        "Data_Type"      = 'Incidence'
+        AND "Sex"        = 'Persons'
+        AND "State_Territory" = 'Australia'
+        AND "Year"::int  <= 2019
+        AND "Count"      IS NOT NULL
       GROUP BY year
-      ORDER BY year ASC
+      ORDER BY year desc
       LIMIT 12
     `);
 
     // Return most-recent 12 years up to 2019
     const rows = result.rows;
-    const data = rows.slice(-12).map(r => ({ year: String(r.year), cases: r.cases }));
+    const data = rows
+      .slice(-12)
+      .map(r => ({ year: String(r.year), cases: r.cases }))
+      .sort((a, b) => Number(a.year) - Number(b.year));
+
     res.json({ data });
   } catch (err) {
     console.error('[getMelanomaCases]', err.message);

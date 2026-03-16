@@ -82,7 +82,7 @@ function clearAuthStorage() {
 const backendUrl = import.meta.env.VITE_BACKEND_URL;
 
 // ---------------------------------------------------------------------------
-// UV helpers
+// UV + geocoding helpers
 // ---------------------------------------------------------------------------
 
 function getUVRisk(uv: number) {
@@ -122,24 +122,18 @@ async function fetchUVFromAPI(
   return { currentUV, hourlyForecast };
 }
 
-/**
- * Forward geocode a plain-text location string (e.g. "Melbourne, Victoria")
- * using the free Nominatim API. Returns lat/lon or null if not found.
- */
-async function geocodeLocation(locationStr: string): Promise<{ lat: number; lon: number; displayName: string } | null> {
+/** Forward geocode a plain-text location string via Nominatim (free, no API key). */
+async function geocodeLocation(
+  locationStr: string
+): Promise<{ lat: number; lon: number } | null> {
   try {
-    const encoded = encodeURIComponent(locationStr);
     const res = await fetch(
-      `https://nominatim.openstreetmap.org/search?q=${encoded}&format=json&limit=1`,
+      `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(locationStr)}&format=json&limit=1`,
       { headers: { "Accept-Language": "en" } }
     );
     const results = await res.json();
     if (!results.length) return null;
-    return {
-      lat: parseFloat(results[0].lat),
-      lon: parseFloat(results[0].lon),
-      displayName: results[0].display_name.split(",").slice(0, 2).join(",").trim(),
-    };
+    return { lat: parseFloat(results[0].lat), lon: parseFloat(results[0].lon) };
   } catch {
     return null;
   }
@@ -151,12 +145,12 @@ async function geocodeLocation(locationStr: string): Promise<{ lat: number; lon:
 
 export default function Layout() {
   const navigate = useNavigate();
-  const [skinType, setSkinType]         = useState(3);
-  const [isLoggedIn, setIsLoggedIn]     = useState(false);
-  const [username, setUsername]         = useState("");
-  const [authChecked, setAuthChecked]   = useState(false);
+  const [skinType, setSkinType]       = useState(3);
+  const [isLoggedIn, setIsLoggedIn]   = useState(false);
+  const [username, setUsername]       = useState("");
+  const [authChecked, setAuthChecked] = useState(false);
 
-  const [currentLocation, setCurrentLocation] = useState("Detecting location...");
+  const [currentLocation, setCurrentLocation] = useState("Loading location...");
   const [currentUV, setCurrentUV]             = useState(0);
   const [hourlyForecast, setHourlyForecast]   = useState<{ time: string; uv: number }[]>([]);
   const [uvLoading, setUvLoading]             = useState(true);
@@ -172,27 +166,30 @@ export default function Layout() {
   };
 
   // -------------------------------------------------------------------------
-  // Auth + UV bootstrap
-  // Priority order for UV location:
-  //   1. User's saved location from DB  (e.g. "Melbourne, Victoria")
-  //   2. Browser geolocation             (if no saved location)
-  //   3. Default Melbourne coords        (if geolocation denied)
+  // Single auth + UV bootstrap effect.
+  //
+  // UV location priority — strictly in order, NO fallthrough if found:
+  //   1. user.location from DB   → geocode → fetchUV   (never asks for GPS)
+  //   2. Browser geolocation     → reverse geocode → fetchUV  (only if no DB location)
+  //   3. Melbourne default       → fetchUV  (only if geolocation denied AND no DB location)
   // -------------------------------------------------------------------------
   useEffect(() => {
     purgeExpiredUVCache();
 
-    async function checkAuth() {
+    async function bootstrap() {
       const token = localStorage.getItem("sunguard_token");
 
-      // Layer 1 + 2: quick local JWT checks
+      // --- JWT local checks (no network) ---
       if (!isTokenValid(token)) {
         clearAuthStorage();
         navigate("/login");
         return;
       }
 
-      // Layer 3: verify token with backend and fetch user profile
+      // --- Fetch user profile from DB ---
       let savedLocation: string | null = null;
+      let authOk = false;
+
       try {
         const res = await fetch(`${backendUrl}/users/me`, {
           headers: { Authorization: `Bearer ${token}` },
@@ -209,62 +206,67 @@ export default function Layout() {
         setUsername(user.nickname || user.username);
         if (user.skin_type) setSkinType(user.skin_type);
 
-        // Store latest values from DB
         localStorage.setItem("sunguard_loggedin", "true");
         localStorage.setItem("sunguard_username", user.nickname || user.username);
         localStorage.setItem("sunguard_user_id",  String(user.id));
-        if (user.location) {
-          localStorage.setItem("sunguard_location", user.location);
-          savedLocation = user.location;
+
+        if (user.location && user.location.trim()) {
+          savedLocation = user.location.trim();
+          localStorage.setItem("sunguard_location", savedLocation);
         }
+        authOk = true;
 
       } catch {
-        // Network error — fall back to localStorage
-        const storedUser = localStorage.getItem("sunguard_username");
+        // Network error — try localStorage fallback
+        const storedUser     = localStorage.getItem("sunguard_username");
+        const storedLocation = localStorage.getItem("sunguard_location");
         if (storedUser) {
           setIsLoggedIn(true);
           setUsername(storedUser);
-          savedLocation = localStorage.getItem("sunguard_location");
+          if (storedLocation && storedLocation.trim()) {
+            savedLocation = storedLocation.trim();
+          }
+          authOk = true;
         } else {
           clearAuthStorage();
           navigate("/login");
           return;
         }
-      } finally {
-        setAuthChecked(true);
       }
 
-      // --- UV load priority ---
+      // Unblock the UI — show dashboard shell while UV loads
+      setAuthChecked(true);
+
+      if (!authOk) return;
+
+      // --- UV load: strictly use DB location if it exists ---
       if (savedLocation) {
-        // Priority 1: geocode the user's saved location string → fetch UV
-        await loadUVForSavedLocation(savedLocation);
+        // Always use saved location — never prompt for GPS
+        setCurrentLocation(savedLocation);
+        const coords = await geocodeLocation(savedLocation);
+        if (coords) {
+          await loadUVForCoords(coords.lat, coords.lon, savedLocation);
+        } else {
+          // Geocoding failed (bad location string) — show error state, don't ask for GPS
+          console.warn(`[Layout] Geocoding failed for "${savedLocation}". Check the saved location.`);
+          setCurrentLocation(`${savedLocation} (location not found)`);
+          setUvLoading(false);
+        }
       } else {
-        // Priority 2 & 3: browser geolocation or Melbourne default
-        startUVFromGeolocation();
+        // No saved location at all — only NOW fall back to browser GPS
+        loadUVFromGeolocation();
       }
     }
 
-    checkAuth();
+    bootstrap();
   }, [navigate]);
 
   /**
-   * Geocode a saved location string and load UV for those coordinates.
-   * Falls back to browser geolocation if geocoding fails.
+   * Browser geolocation path — only used when user has NO saved location in DB.
+   * Never called if savedLocation is set.
    */
-  async function loadUVForSavedLocation(locationStr: string) {
-    setCurrentLocation(locationStr);
-    const coords = await geocodeLocation(locationStr);
-    if (coords) {
-      await loadUVForCoords(coords.lat, coords.lon, locationStr);
-    } else {
-      // Geocoding failed — fall back to browser geolocation
-      console.warn(`[Layout] Could not geocode "${locationStr}", falling back to geolocation.`);
-      startUVFromGeolocation();
-    }
-  }
-
-  /** Use browser geolocation to determine the user's current position. */
-  function startUVFromGeolocation() {
+  function loadUVFromGeolocation() {
+    setCurrentLocation("Detecting location...");
     if (!navigator.geolocation) {
       loadUVForCoords(-37.8136, 144.9631, "Melbourne, AU");
       return;
@@ -282,7 +284,7 @@ export default function Layout() {
           })
           .catch(() => loadUVForCoords(lat, lon, "Your Location"));
       },
-      () => loadUVForCoords(-37.8136, 144.9631, "Melbourne, AU (default)"),
+      () => loadUVForCoords(-37.8136, 144.9631, "Melbourne, AU"),
       { enableHighAccuracy: false, timeout: 8000 }
     );
   }
@@ -307,7 +309,7 @@ export default function Layout() {
       setUvCacheAge(0);
       writeUVCache({ uv, hourlyForecast: forecast, locationName, lat, lon, fetchedAt: Date.now() } as UVCacheEntry);
     } catch (err) {
-      console.error("Failed to fetch UV data:", err);
+      console.error("[Layout] Failed to fetch UV data:", err);
       setCurrentUV(0);
       setHourlyForecast([]);
       setUvFromCache(false);

@@ -1,6 +1,13 @@
 import { Outlet, NavLink, useNavigate, Link } from "react-router";
 import { Sun, BookOpen, User, Bell, LogOut, Info } from "lucide-react";
 import { createContext, useContext, useState, useEffect } from "react";
+import {
+  readUVCache,
+  writeUVCache,
+  purgeExpiredUVCache,
+  cacheAgeMinutes,
+  type UVCacheEntry,
+} from "../utils/uvCache";
 
 // Shared UV data context so all pages can access the same UV state
 interface UVData {
@@ -11,6 +18,8 @@ interface UVData {
   hourlyForecast: { time: string; uv: number }[];
   locationName: string;
   uvLoading: boolean;
+  uvFromCache: boolean;
+  uvCacheAgeMinutes: number;
 }
 
 interface AppContextType {
@@ -40,50 +49,34 @@ function getUVRisk(uv: number) {
   return { level: "Extreme", color: "#9810FA" };
 }
 
-// Derive peak hours from hourly forecast (hours where UV >= 6)
 function derivePeakHours(forecast: { time: string; uv: number }[]): string {
   const peakSlots = forecast.filter((h) => h.uv >= 6).map((h) => h.time.replace(":00", ""));
   if (peakSlots.length === 0) return "No peak hours today";
   if (peakSlots.length === 1) return `${peakSlots[0]}:00`;
-  return `${peakSlots[0]}:00 – ${peakSlots[peakSlots.length - 1]}:00`;
+  return `${peakSlots[0]}:00 \u2013 ${peakSlots[peakSlots.length - 1]}:00`;
 }
 
 const OW_API_KEY = import.meta.env.VITE_OPENWEATHER_API_KEY;
 
-// Fetch real UV index + hourly forecast from OpenWeatherMap
-async function fetchUVData(
+async function fetchUVFromAPI(
   lat: number,
   lon: number
 ): Promise<{ currentUV: number; hourlyForecast: { time: string; uv: number }[] }> {
-  if (!OW_API_KEY) {
-    throw new Error("VITE_OPENWEATHER_API_KEY is not set in .env");
-  }
+  if (!OW_API_KEY) throw new Error("VITE_OPENWEATHER_API_KEY is not set in .env");
 
-  // Use the One Call API 3.0 for current + hourly UV
-  // Falls back to One Call 2.5 if 3.0 subscription is not active
   const url = `https://api.openweathermap.org/data/3.0/onecall?lat=${lat}&lon=${lon}&exclude=minutely,daily,alerts&appid=${OW_API_KEY}&units=metric`;
-
   const res = await fetch(url);
-  if (!res.ok) {
-    throw new Error(`OpenWeatherMap API error: ${res.status}`);
-  }
-
+  if (!res.ok) throw new Error(`OpenWeatherMap API error: ${res.status}`);
   const data = await res.json();
 
   const currentUV = Math.round(data.current.uvi * 10) / 10;
-
-  // Build 12-hour hourly forecast from now
-  const now = new Date();
-  const currentHour = now.getHours();
+  const currentHour = new Date().getHours();
   const hourlyForecast = (data.hourly as any[])
     .slice(0, 12)
-    .map((h: any, i: number) => {
-      const hour = (currentHour + i) % 24;
-      return {
-        time: `${String(hour).padStart(2, "0")}:00`,
-        uv: Math.round((h.uvi ?? 0) * 10) / 10,
-      };
-    });
+    .map((h: any, i: number) => ({
+      time: `${String((currentHour + i) % 24).padStart(2, "0")}:00`,
+      uv: Math.round((h.uvi ?? 0) * 10) / 10,
+    }));
 
   return { currentUV, hourlyForecast };
 }
@@ -94,20 +87,21 @@ export default function Layout() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [username, setUsername] = useState("");
 
-  // Location/UV state
   const [currentLocation, setCurrentLocation] = useState("Detecting location...");
   const [currentUV, setCurrentUV] = useState(0);
   const [hourlyForecast, setHourlyForecast] = useState<{ time: string; uv: number }[]>([]);
   const [uvLoading, setUvLoading] = useState(true);
+  const [uvFromCache, setUvFromCache] = useState(false);
+  const [uvCacheAge, setUvCacheAge] = useState(0);
 
-  // Allow map pin to override UV and location
   const setUVDataOverrides = (uv: number, locationName: string) => {
     setCurrentUV(uv);
     setCurrentLocation(locationName);
   };
 
-  // On mount: check login, then get real UV data via geolocation
   useEffect(() => {
+    purgeExpiredUVCache();
+
     const stored = localStorage.getItem("sunguard_loggedin");
     const storedUser = localStorage.getItem("sunguard_username");
     if (stored === "true" && storedUser) {
@@ -118,9 +112,7 @@ export default function Layout() {
       return;
     }
 
-    // Try to get real UV via geolocation
     if (!navigator.geolocation) {
-      // Geolocation not supported — fallback to Melbourne
       loadUVForCoords(-37.8136, 144.9631, "Melbourne, AU");
       return;
     }
@@ -128,7 +120,6 @@ export default function Layout() {
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         const { latitude: lat, longitude: lon } = pos.coords;
-        // Reverse geocode for display name using Nominatim (free, no key needed)
         fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json`)
           .then((r) => r.json())
           .then((geo) => {
@@ -141,10 +132,7 @@ export default function Layout() {
           })
           .catch(() => loadUVForCoords(lat, lon, "Your Location"));
       },
-      () => {
-        // Permission denied or error — fallback to Melbourne
-        loadUVForCoords(-37.8136, 144.9631, "Melbourne, AU (default)");
-      },
+      () => loadUVForCoords(-37.8136, 144.9631, "Melbourne, AU (default)"),
       { enableHighAccuracy: false, timeout: 8000 }
     );
   }, [navigate]);
@@ -152,15 +140,41 @@ export default function Layout() {
   async function loadUVForCoords(lat: number, lon: number, locationName: string) {
     setUvLoading(true);
     setCurrentLocation(locationName);
+
+    // Check cache first
+    const cached = readUVCache(lat, lon);
+    if (cached) {
+      setCurrentUV(cached.uv);
+      setHourlyForecast(cached.hourlyForecast);
+      setUvFromCache(true);
+      setUvCacheAge(cacheAgeMinutes(cached));
+      setUvLoading(false);
+      return;
+    }
+
+    // Cache miss — fetch from API
     try {
-      const { currentUV: uv, hourlyForecast: forecast } = await fetchUVData(lat, lon);
+      const { currentUV: uv, hourlyForecast: forecast } = await fetchUVFromAPI(lat, lon);
       setCurrentUV(uv);
       setHourlyForecast(forecast);
+      setUvFromCache(false);
+      setUvCacheAge(0);
+
+      // Write to cache
+      const entry: UVCacheEntry = {
+        uv,
+        hourlyForecast: forecast,
+        locationName,
+        lat,
+        lon,
+        fetchedAt: Date.now(),
+      };
+      writeUVCache(entry);
     } catch (err) {
-      console.error("Failed to fetch UV data from OpenWeatherMap:", err);
-      // Fallback: set a neutral UV of 0 and empty forecast
+      console.error("Failed to fetch UV data:", err);
       setCurrentUV(0);
       setHourlyForecast([]);
+      setUvFromCache(false);
     } finally {
       setUvLoading(false);
     }
@@ -185,6 +199,8 @@ export default function Layout() {
     hourlyForecast,
     locationName: currentLocation,
     uvLoading,
+    uvFromCache,
+    uvCacheAgeMinutes: uvCacheAge,
   };
 
   const navItems = [
@@ -208,10 +224,8 @@ export default function Layout() {
       }}
     >
       <div className="min-h-screen bg-[#fafafa]">
-        {/* Header */}
         <header className="bg-white shadow-sm sticky top-0 z-50">
           <div className="max-w-[1400px] mx-auto px-6 flex items-center justify-between h-[72px]">
-            {/* Logo */}
             <div className="flex items-center gap-3">
               <div
                 className="w-12 h-12 rounded-full flex items-center justify-center"
@@ -230,7 +244,6 @@ export default function Layout() {
               </div>
             </div>
 
-            {/* Navigation */}
             <nav className="flex items-center gap-2">
               {navItems.map((item) => (
                 <NavLink
@@ -251,7 +264,6 @@ export default function Layout() {
                 </NavLink>
               ))}
 
-              {/* About link */}
               <Link
                 to="/"
                 className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-[14px] transition-colors text-[#4a5565] hover:bg-blue-50 hover:text-[#155dfc]"
@@ -276,7 +288,6 @@ export default function Layout() {
           </div>
         </header>
 
-        {/* Page content */}
         <main className="max-w-[1400px] mx-auto px-6 py-6">
           <Outlet />
         </main>

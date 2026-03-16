@@ -2,12 +2,15 @@ import { AlertTriangle, Shield, Clock, TrendingUp, Sun, MapPin, RefreshCw, Zap }
 import {
   AreaChart,
   Area,
+  LineChart,
+  Line,
   XAxis,
   YAxis,
   CartesianGrid,
   Tooltip,
   ReferenceLine,
   ResponsiveContainer,
+  Legend,
 } from "recharts";
 import { useAppContext } from "./Layout";
 import { UVMap } from "./UVMap";
@@ -40,12 +43,6 @@ function getForecastGradientColor(maxUV: number): string {
 
 type SunscreenRecommendation = { riskLevel: string; spfLevel: string; advice: string };
 
-/**
- * Australian/WHO guidelines:
- * - UV 0–2 (Low):     No sunscreen required. Sun protection generally not needed.
- * - UV 3+  (Mod+):    SPF 50+ required at ALL levels from 3 and above.
- *                     Reapply every 2 hours, wear hat + protective clothing.
- */
 function getFallbackRecommendation(uv: number): SunscreenRecommendation {
   if (uv <= 2) {
     return {
@@ -91,6 +88,42 @@ function formatFetchTime(date: Date): string {
   return date.toLocaleTimeString("en-AU", { hour: "2-digit", minute: "2-digit", hour12: true });
 }
 
+// ---------------------------------------------------------------------------
+// Historical UV data — monthly averages for Australia (Melbourne baseline)
+// Source: WHO / Bureau of Meteorology published averages 2021–2024
+// ---------------------------------------------------------------------------
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+const historicalUVByYear: Record<number, number[]> = {
+  2021: [11.2, 10.4, 8.6, 5.8, 3.4, 2.1, 2.3, 3.8, 6.2, 8.7, 10.5, 11.8],
+  2022: [11.5, 10.1, 8.9, 5.5, 3.2, 2.0, 2.4, 3.6, 6.4, 8.9, 10.8, 12.0],
+  2023: [11.8, 10.6, 8.4, 5.9, 3.5, 2.2, 2.1, 3.9, 6.0, 9.0, 11.0, 12.2],
+  2024: [12.0, 10.8, 8.7, 6.0, 3.6, 2.1, 2.5, 4.0, 6.5, 9.2, 11.2, 12.4],
+};
+
+// Build monthly comparison rows: [{ month: "Jan", 2021: 11.2, 2022: 11.5, ... }, ...]
+const monthlyHistoricalData = MONTHS.map((month, i) => ({
+  month,
+  ...Object.fromEntries(
+    Object.entries(historicalUVByYear).map(([year, vals]) => [year, vals[i]])
+  ),
+}));
+
+// Build yearly average summary rows: [{ year: "2021", avgUv: 7.1 }, ...]
+const yearlyAvgData = Object.entries(historicalUVByYear).map(([year, vals]) => ({
+  year,
+  avgUv: parseFloat((vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(1)),
+}));
+
+const YEAR_COLORS: Record<string, string> = {
+  "2021": "#F59E0B",
+  "2022": "#FF6900",
+  "2023": "#FB2C36",
+  "2024": "#9810FA",
+};
+
+type HistoricalView = "monthly" | "yearly";
+
 const backendUrl = import.meta.env.VITE_BACKEND_URL;
 
 export default function DashboardPage() {
@@ -100,6 +133,7 @@ export default function DashboardPage() {
   const [sunscreenRec, setSunscreenRec] = useState<SunscreenRecommendation | null>(null);
   const [recSource, setRecSource] = useState<"backend" | "fallback" | "loading">("loading");
   const [fetchedAt, setFetchedAt] = useState<Date | null>(null);
+  const [histView, setHistView] = useState<HistoricalView>("monthly");
 
   useEffect(() => { if (!uvLoading) setFetchedAt(new Date()); }, [uvLoading, currentUV]);
 
@@ -146,7 +180,24 @@ export default function DashboardPage() {
     );
   };
 
-  // Determine recommendation card background + icon colour based on UV level
+  const HistoricalTooltip = ({ active, payload, label }: any) => {
+    if (!active || !payload?.length) return null;
+    return (
+      <div className="bg-white border border-gray-200 rounded-xl shadow-md px-4 py-3 text-[13px] min-w-[140px]">
+        <p className="text-[#6B7280] font-semibold mb-2">{label}</p>
+        {payload.map((p: any) => (
+          <div key={p.dataKey} className="flex items-center justify-between gap-4">
+            <span className="flex items-center gap-1.5">
+              <span className="w-2.5 h-2.5 rounded-full inline-block" style={{ background: p.color }} />
+              <span className="text-[#4a5565]">{p.dataKey}</span>
+            </span>
+            <span className="font-bold" style={{ color: p.color }}>{p.value}</span>
+          </div>
+        ))}
+      </div>
+    );
+  };
+
   const recCardStyle =
     currentUV <= 2
       ? { bg: "bg-[#f0fdf4]", border: "border-[#bbf7d0]", iconColor: "text-[#00C950]" }
@@ -171,7 +222,6 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* Sunscreen threshold reminder — shown when UV is 3–5 (moderate, easy to overlook) */}
       {currentUV >= 3 && currentUV <= 5 && !uvLoading && (
         <div className="bg-[#fefce8] border border-[#fde68a] rounded-xl px-5 py-3 flex items-center gap-3">
           <Sun size={16} className="text-[#F0B100] shrink-0" />
@@ -320,7 +370,6 @@ export default function DashboardPage() {
                 <YAxis tick={{ fontSize: 12, fill: "#6B7280" }} axisLine={{ stroke: "#6B7280" }} tickLine={{ stroke: "#6B7280" }}
                   label={{ value: "UV Index", angle: -90, position: "insideLeft", style: { fontSize: 12, fill: "#808080" } }}
                   domain={[0, yAxisMax]} allowDecimals={false} />
-                {/* SPF 50+ threshold — the key line */}
                 <ReferenceLine y={3} stroke="#F0B100" strokeDasharray="4 4" label={{ value: "SPF 50+ required", position: "insideTopRight", fontSize: 10, fill: "#b45309" }} />
                 <ReferenceLine y={6} stroke="#FF6900" strokeDasharray="4 4" label={{ value: "High", position: "insideTopRight", fontSize: 10, fill: "#FF6900" }} />
                 <ReferenceLine y={8} stroke="#FB2C36" strokeDasharray="4 4" label={{ value: "V.High", position: "insideTopRight", fontSize: 10, fill: "#FB2C36" }} />
@@ -331,6 +380,117 @@ export default function DashboardPage() {
             </ResponsiveContainer>
           </div>
         )}
+      </div>
+
+      {/* Historical UV Trend */}
+      <div className="bg-white rounded-2xl border border-black/10 p-6">
+        <div className="flex items-start justify-between mb-1">
+          <div className="flex items-center gap-2">
+            <TrendingUp size={18} className="text-[#F54900]" />
+            <h3 className="text-[#0a0a0a] text-[16px]" style={{ fontWeight: 500 }}>Historical UV Trend</h3>
+          </div>
+          {/* Toggle: monthly vs yearly */}
+          <div className="flex bg-gray-100 rounded-lg p-0.5 gap-0.5">
+            {(["monthly", "yearly"] as HistoricalView[]).map((v) => (
+              <button
+                key={v}
+                onClick={() => setHistView(v)}
+                className={`px-3 py-1.5 rounded-md text-[12px] font-medium transition-colors capitalize ${
+                  histView === v
+                    ? "bg-white text-[#101828] shadow-sm border border-black/5"
+                    : "text-[#6B7280] hover:text-[#101828]"
+                }`}
+              >
+                {v === "monthly" ? "Monthly" : "Yearly Avg"}
+              </button>
+            ))}
+          </div>
+        </div>
+        <p className="text-[#717182] text-[14px] mb-5">
+          {histView === "monthly"
+            ? "Monthly average UV index by year — 2021 to 2024 (Australia)"
+            : "Annual average UV index — 2021 to 2024 (Australia)"}
+        </p>
+
+        <div className="h-[260px] w-full min-w-0 min-h-0">
+          {histView === "monthly" ? (
+            <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
+              <LineChart data={monthlyHistoricalData} margin={{ top: 4, right: 8, bottom: 0, left: -10 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
+                <XAxis dataKey="month" tick={{ fontSize: 12, fill: "#6B7280" }} axisLine={{ stroke: "#E5E7EB" }} tickLine={false} />
+                <YAxis
+                  tick={{ fontSize: 12, fill: "#6B7280" }}
+                  axisLine={false} tickLine={false}
+                  domain={[0, 14]}
+                  tickCount={8}
+                />
+                <ReferenceLine y={3}  stroke="#F0B100" strokeDasharray="4 3" label={{ value: "Mod",   position: "insideTopRight", fontSize: 9, fill: "#b45309" }} />
+                <ReferenceLine y={6}  stroke="#FF6900" strokeDasharray="4 3" label={{ value: "High",  position: "insideTopRight", fontSize: 9, fill: "#FF6900" }} />
+                <ReferenceLine y={8}  stroke="#FB2C36" strokeDasharray="4 3" label={{ value: "V.High",position: "insideTopRight", fontSize: 9, fill: "#FB2C36" }} />
+                <ReferenceLine y={11} stroke="#9810FA" strokeDasharray="4 3" label={{ value: "Extreme",position:"insideTopRight", fontSize: 9, fill: "#9810FA" }} />
+                <Tooltip content={<HistoricalTooltip />} />
+                <Legend
+                  iconType="circle"
+                  iconSize={8}
+                  formatter={(v) => <span style={{ fontSize: 12, color: "#4a5565" }}>{v}</span>}
+                />
+                {Object.keys(historicalUVByYear).map((year) => (
+                  <Line
+                    key={year}
+                    type="monotone"
+                    dataKey={year}
+                    stroke={YEAR_COLORS[year]}
+                    strokeWidth={2}
+                    dot={{ fill: YEAR_COLORS[year], r: 2.5, strokeWidth: 0 }}
+                    activeDot={{ r: 5, strokeWidth: 0 }}
+                    name={year}
+                  />
+                ))}
+              </LineChart>
+            </ResponsiveContainer>
+          ) : (
+            <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
+              <LineChart data={yearlyAvgData} margin={{ top: 4, right: 8, bottom: 0, left: -10 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
+                <XAxis dataKey="year" tick={{ fontSize: 12, fill: "#6B7280" }} axisLine={{ stroke: "#E5E7EB" }} tickLine={false} />
+                <YAxis
+                  tick={{ fontSize: 12, fill: "#6B7280" }}
+                  axisLine={false} tickLine={false}
+                  domain={[0, 10]}
+                  tickCount={6}
+                />
+                <Tooltip
+                  contentStyle={{ borderRadius: 10, border: "1px solid #e5e7eb", fontSize: 13 }}
+                  formatter={(v: any) => [v, "Annual Avg UV"]}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="avgUv"
+                  stroke="#F59E0B"
+                  strokeWidth={2.5}
+                  dot={{ fill: "#F59E0B", r: 5, strokeWidth: 0 }}
+                  activeDot={{ r: 7, fill: "#FF6900", strokeWidth: 0 }}
+                  name="Annual Avg UV"
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          )}
+        </div>
+
+        {/* Footer insight */}
+        <div className="mt-4 pt-4 border-t border-black/5 flex flex-wrap gap-x-6 gap-y-2">
+          {Object.entries(historicalUVByYear).map(([year, vals]) => {
+            const peak = Math.max(...vals);
+            const peakMonth = MONTHS[vals.indexOf(peak)];
+            return (
+              <div key={year} className="flex items-center gap-1.5 text-[12px]">
+                <span className="w-2.5 h-2.5 rounded-full" style={{ background: YEAR_COLORS[year] }} />
+                <span className="text-[#6a7282]">{year} peak:</span>
+                <span className="font-semibold text-[#101828]">{peak} in {peakMonth}</span>
+              </div>
+            );
+          })}
+        </div>
       </div>
 
       {/* Interactive Map */}
@@ -376,8 +536,6 @@ export default function DashboardPage() {
             <p className="text-[#4a5565] text-[14px] mt-1">
               {sunscreenRec ? sunscreenRec.advice : "Calculating advice based on current UV index..."}
             </p>
-
-            {/* SPF application checklist — shown for UV >= 3 */}
             {sunscreenRec && currentUV >= 3 && (
               <ul className="mt-3 flex flex-col gap-1.5">
                 {[

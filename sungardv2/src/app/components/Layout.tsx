@@ -122,7 +122,6 @@ async function fetchUVFromAPI(
   return { currentUV, hourlyForecast };
 }
 
-/** Forward geocode a plain-text location string via Nominatim (free, no API key). */
 async function geocodeLocation(
   locationStr: string
 ): Promise<{ lat: number; lon: number } | null> {
@@ -165,28 +164,18 @@ export default function Layout() {
     setUvCacheAge(payload.cacheAgeMinutes);
   };
 
-  // -------------------------------------------------------------------------
-  // Single auth + UV bootstrap effect.
-  //
-  // UV location priority — strictly in order, NO fallthrough if found:
-  //   1. user.location from DB   → geocode → fetchUV   (never asks for GPS)
-  //   2. Browser geolocation     → reverse geocode → fetchUV  (only if no DB location)
-  //   3. Melbourne default       → fetchUV  (only if geolocation denied AND no DB location)
-  // -------------------------------------------------------------------------
   useEffect(() => {
     purgeExpiredUVCache();
 
     async function bootstrap() {
       const token = localStorage.getItem("sunguard_token");
 
-      // --- JWT local checks (no network) ---
       if (!isTokenValid(token)) {
         clearAuthStorage();
         navigate("/login");
         return;
       }
 
-      // --- Fetch user profile from DB ---
       let savedLocation: string | null = null;
       let authOk = false;
 
@@ -217,7 +206,6 @@ export default function Layout() {
         authOk = true;
 
       } catch {
-        // Network error — try localStorage fallback
         const storedUser     = localStorage.getItem("sunguard_username");
         const storedLocation = localStorage.getItem("sunguard_location");
         if (storedUser) {
@@ -234,26 +222,21 @@ export default function Layout() {
         }
       }
 
-      // Unblock the UI — show dashboard shell while UV loads
       setAuthChecked(true);
 
       if (!authOk) return;
 
-      // --- UV load: strictly use DB location if it exists ---
       if (savedLocation) {
-        // Always use saved location — never prompt for GPS
         setCurrentLocation(savedLocation);
         const coords = await geocodeLocation(savedLocation);
         if (coords) {
           await loadUVForCoords(coords.lat, coords.lon, savedLocation);
         } else {
-          // Geocoding failed (bad location string) — show error state, don't ask for GPS
-          console.warn(`[Layout] Geocoding failed for "${savedLocation}". Check the saved location.`);
+          console.warn(`[Layout] Geocoding failed for "${savedLocation}".`);
           setCurrentLocation(`${savedLocation} (location not found)`);
           setUvLoading(false);
         }
       } else {
-        // No saved location at all — only NOW fall back to browser GPS
         loadUVFromGeolocation();
       }
     }
@@ -261,10 +244,6 @@ export default function Layout() {
     bootstrap();
   }, [navigate]);
 
-  /**
-   * Browser geolocation path — only used when user has NO saved location in DB.
-   * Never called if savedLocation is set.
-   */
   function loadUVFromGeolocation() {
     setCurrentLocation("Detecting location...");
     if (!navigator.geolocation) {
@@ -318,11 +297,12 @@ export default function Layout() {
     }
   }
 
+  // --- Logout now navigates to landing page ("/") instead of "/login" ---
   const handleLogout = () => {
     clearAuthStorage();
     setIsLoggedIn(false);
     setUsername("");
-    navigate("/login");
+    navigate("/");
   };
 
   if (!authChecked) {

@@ -1,15 +1,21 @@
 -- SunGuard database schema
--- All statements use IF NOT EXISTS — safe to re-run on every startup.
+-- All statements use IF NOT EXISTS / ADD COLUMN IF NOT EXISTS — safe to re-run.
 
 CREATE TABLE IF NOT EXISTS users (
   id           SERIAL PRIMARY KEY,
   username     VARCHAR(100) UNIQUE NOT NULL,
   email        VARCHAR(255) UNIQUE NOT NULL,
   password     VARCHAR(255) NOT NULL,
-  skin_type    INTEGER DEFAULT 3,
+  nickname     VARCHAR(100),
+  skin_type    INTEGER DEFAULT NULL,
   location     VARCHAR(255),
+  onboarded    BOOLEAN DEFAULT FALSE,
   created_at   TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- Add columns if upgrading an existing database
+ALTER TABLE users ADD COLUMN IF NOT EXISTS nickname  VARCHAR(100);
+ALTER TABLE users ADD COLUMN IF NOT EXISTS onboarded BOOLEAN DEFAULT FALSE;
 
 CREATE TABLE IF NOT EXISTS reminders (
   id           SERIAL PRIMARY KEY,

@@ -6,6 +6,7 @@ import {
   cacheAgeMinutes,
   type UVCacheEntry,
 } from '../utils/uvCache';
+import type { LocationUVPayload } from './Layout';
 
 declare global {
   interface Window { L: any; }
@@ -14,54 +15,55 @@ declare global {
 const OW_API_KEY = import.meta.env.VITE_OPENWEATHER_API_KEY;
 const GEOCODE_API_KEY = import.meta.env.VITE_GEOCODE_API_KEY;
 
-async function fetchRealUV(lat: number, lng: number): Promise<number> {
+// Fetch FULL UV data (current + 12hr hourly) for a location
+async function fetchFullUV(
+  lat: number,
+  lng: number
+): Promise<{ uv: number; hourlyForecast: { time: string; uv: number }[] }> {
   if (!OW_API_KEY) {
-    console.warn('VITE_OPENWEATHER_API_KEY not set — UV will show as 0');
-    return 0;
+    console.warn('VITE_OPENWEATHER_API_KEY not set');
+    return { uv: 0, hourlyForecast: [] };
   }
   const res = await fetch(
-    `https://api.openweathermap.org/data/3.0/onecall?lat=${lat}&lon=${lng}&exclude=minutely,hourly,daily,alerts&appid=${OW_API_KEY}&units=metric`
+    `https://api.openweathermap.org/data/3.0/onecall?lat=${lat}&lon=${lng}&exclude=minutely,daily,alerts&appid=${OW_API_KEY}&units=metric`
   );
   if (!res.ok) throw new Error(`OW API error: ${res.status}`);
   const data = await res.json();
-  return Math.round((data.current?.uvi ?? 0) * 10) / 10;
+  const uv = Math.round((data.current?.uvi ?? 0) * 10) / 10;
+  const currentHour = new Date().getHours();
+  const hourlyForecast = (data.hourly as any[])
+    .slice(0, 12)
+    .map((h: any, i: number) => ({
+      time: `${String((currentHour + i) % 24).padStart(2, '0')}:00`,
+      uv: Math.round((h.uvi ?? 0) * 10) / 10,
+    }));
+  return { uv, hourlyForecast };
 }
 
 async function reverseGeocode(lat: number, lng: number): Promise<string> {
   try {
-    const res = await fetch(
-      `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`
-    );
+    const res = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`);
     const data = await res.json();
     if (data?.address) {
       const addr = data.address;
-      const parts = [
+      return [
         addr.suburb || addr.neighbourhood || addr.residential,
         addr.city || addr.town || addr.village || addr.county,
         addr.state || addr.region,
         addr.country,
-      ].filter(Boolean);
-      return parts.join(', ') || 'Selected Location';
+      ].filter(Boolean).join(', ') || 'Selected Location';
     }
   } catch {
     if (GEOCODE_API_KEY) {
       try {
-        const res = await fetch(
-          `https://geocode.maps.co/reverse?lat=${lat}&lon=${lng}&api_key=${GEOCODE_API_KEY}`
-        );
+        const res = await fetch(`https://geocode.maps.co/reverse?lat=${lat}&lon=${lng}&api_key=${GEOCODE_API_KEY}`);
         const data = await res.json();
         if (data?.address) {
           const addr = data.address;
-          return [
-            addr.suburb || addr.neighbourhood,
-            addr.city || addr.town || addr.village,
-            addr.state,
-            addr.country,
-          ].filter(Boolean).join(', ') || 'Selected Location';
+          return [addr.suburb || addr.neighbourhood, addr.city || addr.town || addr.village, addr.state, addr.country]
+            .filter(Boolean).join(', ') || 'Selected Location';
         }
-      } catch (err) {
-        console.error('Reverse geocoding fallback failed', err);
-      }
+      } catch (err) { console.error('Reverse geocoding fallback failed', err); }
     }
   }
   return 'Selected Location';
@@ -69,23 +71,17 @@ async function reverseGeocode(lat: number, lng: number): Promise<string> {
 
 async function forwardGeocode(query: string): Promise<{ lat: number; lon: number } | null> {
   try {
-    const res = await fetch(
-      `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&countrycodes=au`
-    );
+    const res = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&countrycodes=au`);
     const data = await res.json();
     if (data?.length > 0) return { lat: parseFloat(data[0].lat), lon: parseFloat(data[0].lon) };
   } catch {
     if (GEOCODE_API_KEY) {
       try {
-        const res = await fetch(
-          `https://geocode.maps.co/search?q=${encodeURIComponent(query)}&api_key=${GEOCODE_API_KEY}`
-        );
+        const res = await fetch(`https://geocode.maps.co/search?q=${encodeURIComponent(query)}&api_key=${GEOCODE_API_KEY}`);
         const data = await res.json();
         const v = data?.find((r: any) => isWithinAustralia(parseFloat(r.lat), parseFloat(r.lon)));
         if (v) return { lat: parseFloat(v.lat), lon: parseFloat(v.lon) };
-      } catch (err) {
-        console.error('Forward geocoding fallback failed', err);
-      }
+      } catch (err) { console.error('Forward geocoding fallback failed', err); }
     }
   }
   return null;
@@ -96,7 +92,8 @@ function isWithinAustralia(lat: number, lon: number) {
 }
 
 interface UVMapProps {
-  onLocationSelect: (uv: number, name: string) => void;
+  // Now receives the full LocationUVPayload so forecast is always in sync
+  onLocationSelect: (payload: LocationUVPayload) => void;
   currentUv: number;
   initialLocation?: string;
 }
@@ -108,13 +105,13 @@ export function UVMap({ onLocationSelect, currentUv, initialLocation }: UVMapPro
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearching, setIsSearching] = useState(false);
   const [cacheInfo, setCacheInfo] = useState<{ fromCache: boolean; ageMinutes: number } | null>(null);
+  // Track whether a marker exists yet (for the refresh button)
+  const [hasMarker, setHasMarker] = useState(false);
   const mapInstanceRef = useRef<any>(null);
   const markerRef = useRef<any>(null);
   const onLocationSelectRef = useRef(onLocationSelect);
-
   useEffect(() => { onLocationSelectRef.current = onLocationSelect; }, [onLocationSelect]);
 
-  // Load Leaflet dynamically
   useEffect(() => {
     if (window.L) { setMapLoaded(true); return; }
     const loadLeaflet = () => {
@@ -134,12 +131,6 @@ export function UVMap({ onLocationSelect, currentUv, initialLocation }: UVMapPro
     loadLeaflet();
   }, []);
 
-  /**
-   * Core location processor:
-   * 1. Check localStorage UV cache for this lat/lng
-   * 2. If hit and < 1 hr old — use cached data, skip API call
-   * 3. If miss or expired — fetch from OpenWeatherMap, write to cache
-   */
   const processLocation = useCallback(async (lat: number, lng: number, forceRefresh = false) => {
     const map = mapInstanceRef.current;
     if (!map || !window.L) return;
@@ -156,6 +147,7 @@ export function UVMap({ onLocationSelect, currentUv, initialLocation }: UVMapPro
         iconSize: [32, 32], iconAnchor: [16, 32], popupAnchor: [0, -32],
       });
       markerRef.current = window.L.marker([lat, lng], { icon }).addTo(map);
+      setHasMarker(true);
     } else {
       markerRef.current.setLatLng([lat, lng]);
     }
@@ -164,37 +156,40 @@ export function UVMap({ onLocationSelect, currentUv, initialLocation }: UVMapPro
       .bindPopup(`<div style="text-align:center;"><div style="font-weight:600;color:#101828;">Fetching UV data...</div></div>`)
       .openPopup();
 
-    // Check cache
+    // --- Cache check ---
     const cached = !forceRefresh ? readUVCache(lat, lng) : null;
 
     let uv: number;
+    let hourlyForecast: { time: string; uv: number }[];
     let locationName: string;
     let fromCache = false;
     let ageMin = 0;
 
-    if (cached) {
-      // ✅ Cache hit — no API call needed
+    if (cached && cached.hourlyForecast.length > 0) {
+      // Full cache hit (has forecast data)
       uv = cached.uv;
+      hourlyForecast = cached.hourlyForecast;
       locationName = cached.locationName;
       fromCache = true;
       ageMin = cacheAgeMinutes(cached);
     } else {
-      // 🌐 Cache miss — fetch from APIs in parallel
+      // Cache miss or stale forecast — fetch full data from API
       markerRef.current
         .bindPopup(`<div style="text-align:center;"><div style="font-weight:600;color:#101828;">Loading live UV...</div></div>`)
         .openPopup();
 
-      const [fetchedUV, fetchedName] = await Promise.all([
-        fetchRealUV(lat, lng),
+      const [uvData, fetchedName] = await Promise.all([
+        fetchFullUV(lat, lng),
         reverseGeocode(lat, lng),
       ]);
-      uv = fetchedUV;
+      uv = uvData.uv;
+      hourlyForecast = uvData.hourlyForecast;
       locationName = fetchedName;
 
-      // Write fresh entry to cache
+      // Write full entry to cache (including forecast)
       const entry: UVCacheEntry = {
         uv,
-        hourlyForecast: [],
+        hourlyForecast,
         locationName,
         lat,
         lon: lng,
@@ -205,10 +200,9 @@ export function UVMap({ onLocationSelect, currentUv, initialLocation }: UVMapPro
 
     setCacheInfo({ fromCache, ageMinutes: ageMin });
 
-    // Update popup
     markerRef.current
       .bindPopup(
-        `<div style="text-align:center;min-width:150px;">
+        `<div style="text-align:center;min-width:160px;">
           <div style="font-weight:600;color:#101828;font-size:14px;">${locationName}</div>
           <div style="color:#FF6900;font-weight:700;font-size:18px;margin-top:4px;">UV Index: ${uv}</div>
           <div style="color:#6a7282;font-size:11px;margin-top:4px;">${fromCache ? `\u26a1 Cached ${ageMin}min ago` : '\ud83c\udf10 Live data'}</div>
@@ -216,10 +210,10 @@ export function UVMap({ onLocationSelect, currentUv, initialLocation }: UVMapPro
       )
       .openPopup();
 
-    onLocationSelectRef.current(uv, locationName);
+    // Fire the full payload — dashboard will update UV + forecast + location all at once
+    onLocationSelectRef.current({ uv, locationName, hourlyForecast, fromCache, cacheAgeMinutes: ageMin });
   }, []);
 
-  // Initialise map once Leaflet is loaded
   useEffect(() => {
     if (!mapLoaded || !mapRef.current || !window.L || mapInstanceRef.current) return;
     if ((mapRef.current as any)._leaflet_id) (mapRef.current as any)._leaflet_id = null;
@@ -238,7 +232,6 @@ export function UVMap({ onLocationSelect, currentUv, initialLocation }: UVMapPro
       maxZoom: 19, attribution: '&copy; OpenStreetMap contributors', noWrap: true,
     }).addTo(map);
 
-    // Click map to get UV at any point
     map.on('click', async (e: any) => {
       if (isWithinAustralia(e.latlng.lat, e.latlng.lng)) {
         await processLocation(e.latlng.lat, e.latlng.lng);
@@ -247,7 +240,6 @@ export function UVMap({ onLocationSelect, currentUv, initialLocation }: UVMapPro
       }
     });
 
-    // Auto-center on user's real GPS location on load
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         async (pos) => {
@@ -260,15 +252,10 @@ export function UVMap({ onLocationSelect, currentUv, initialLocation }: UVMapPro
             if (result && isWithinAustralia(result.lat, result.lon)) {
               map.setView([result.lat, result.lon], 11);
               await processLocation(result.lat, result.lon);
-            } else {
-              processLocation(-37.8136, 144.9631);
-            }
-          } else {
-            processLocation(-37.8136, 144.9631);
-          }
+            } else processLocation(-37.8136, 144.9631);
+          } else processLocation(-37.8136, 144.9631);
         },
         async () => {
-          // Geolocation denied — fall back to saved location or Melbourne
           if (initialLocation?.trim()) {
             const result = await forwardGeocode(initialLocation);
             if (result && isWithinAustralia(result.lat, result.lon)) {
@@ -290,6 +277,7 @@ export function UVMap({ onLocationSelect, currentUv, initialLocation }: UVMapPro
         mapInstanceRef.current.remove();
         mapInstanceRef.current = null;
         markerRef.current = null;
+        setHasMarker(false);
       }
     };
   }, [mapLoaded, processLocation]);
@@ -314,9 +302,7 @@ export function UVMap({ onLocationSelect, currentUv, initialLocation }: UVMapPro
       if (result && isWithinAustralia(result.lat, result.lon)) {
         mapInstanceRef.current?.setView([result.lat, result.lon], 12);
         await processLocation(result.lat, result.lon);
-      } else {
-        alert('Location not found or outside Australia.');
-      }
+      } else alert('Location not found or outside Australia.');
     } catch (err) {
       console.error('Search failed', err);
       alert('Error searching for location.');
@@ -334,16 +320,10 @@ export function UVMap({ onLocationSelect, currentUv, initialLocation }: UVMapPro
         if (isWithinAustralia(lat, lng)) {
           mapInstanceRef.current?.setView([lat, lng], 12);
           await processLocation(lat, lng);
-        } else {
-          alert('Your current location is outside of Australia.');
-        }
+        } else alert('Your current location is outside of Australia.');
         setIsLocating(false);
       },
-      (err) => {
-        console.error('Geolocation error:', err);
-        alert('Unable to retrieve your location.');
-        setIsLocating(false);
-      },
+      (err) => { console.error('Geolocation error:', err); alert('Unable to retrieve your location.'); setIsLocating(false); },
       { enableHighAccuracy: true }
     );
   };
@@ -360,47 +340,30 @@ export function UVMap({ onLocationSelect, currentUv, initialLocation }: UVMapPro
 
       {mapLoaded && (
         <div className="absolute top-4 left-4 right-4 z-[400] flex gap-2">
-          <form
-            onSubmit={handleSearch}
-            className="flex-1 max-w-[300px] bg-white rounded-lg shadow-md border border-black/10 flex items-center overflow-hidden"
-          >
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+          <form onSubmit={handleSearch}
+            className="flex-1 max-w-[300px] bg-white rounded-lg shadow-md border border-black/10 flex items-center overflow-hidden">
+            <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search a location..."
-              className="flex-1 px-4 py-2.5 outline-none text-[14px] bg-transparent text-[#0a0a0a]"
-            />
-            <button
-              type="submit"
-              disabled={isSearching || !searchQuery.trim()}
-              className="px-3 py-2.5 text-[#4a5565] hover:text-[#FF6900] hover:bg-gray-50 transition-colors disabled:opacity-50"
-            >
+              className="flex-1 px-4 py-2.5 outline-none text-[14px] bg-transparent text-[#0a0a0a]" />
+            <button type="submit" disabled={isSearching || !searchQuery.trim()}
+              className="px-3 py-2.5 text-[#4a5565] hover:text-[#FF6900] hover:bg-gray-50 transition-colors disabled:opacity-50">
               <Search size={18} className={isSearching ? 'animate-pulse text-[#FF6900]' : ''} />
             </button>
           </form>
 
           <div className="ml-auto flex gap-2">
-            {/* Force refresh button — bypasses cache for current pin */}
-            {markerRef.current && (
-              <button
-                onClick={handleForceRefresh}
+            {hasMarker && (
+              <button onClick={handleForceRefresh}
                 className="bg-white p-2.5 rounded-lg shadow-md border border-black/10 text-[#4a5565] hover:text-[#FF6900] hover:bg-gray-50 transition-colors flex items-center gap-2 cursor-pointer h-full"
-                title="Force refresh UV (bypass cache)"
-              >
+                title="Force refresh UV (bypass cache)">
                 <RefreshCw size={18} />
               </button>
             )}
-            <button
-              onClick={handleCurrentLocation}
-              disabled={isLocating}
+            <button onClick={handleCurrentLocation} disabled={isLocating}
               className="bg-white p-2.5 rounded-lg shadow-md border border-black/10 text-[#4a5565] hover:text-[#0a0a0a] hover:bg-gray-50 transition-colors disabled:opacity-70 flex items-center gap-2 cursor-pointer h-full"
-              title="Get My Location"
-            >
+              title="Get My Location">
               <LocateFixed size={20} className={isLocating ? 'animate-pulse text-[#FF6900]' : 'text-[#4a5565]'} />
-              <span className="text-sm font-medium hidden sm:inline">
-                {isLocating ? 'Locating...' : 'My Location'}
-              </span>
+              <span className="text-sm font-medium hidden sm:inline">{isLocating ? 'Locating...' : 'My Location'}</span>
             </button>
           </div>
         </div>
@@ -412,22 +375,17 @@ export function UVMap({ onLocationSelect, currentUv, initialLocation }: UVMapPro
         </div>
       )}
 
-      {/* Bottom bar — shows cache status */}
       <div className="absolute bottom-4 left-4 right-4 bg-white/90 backdrop-blur-sm border border-black/10 text-sm text-center py-2 px-4 rounded-lg shadow-sm z-[400] pointer-events-none flex items-center justify-center gap-2">
         {cacheInfo ? (
           cacheInfo.fromCache ? (
-            <>
-              <Zap size={14} className="text-[#F0B100]" />
+            <><Zap size={14} className="text-[#F0B100]" />
               <span className="text-[#6a7282]">
                 UV cached &mdash; updated {cacheInfo.ageMinutes === 0 ? 'just now' : `${cacheInfo.ageMinutes}min ago`}
                 {cacheInfo.ageMinutes < 60 ? ` (refreshes in ${60 - cacheInfo.ageMinutes}min)` : ''}
-              </span>
-            </>
+              </span></>
           ) : (
-            <>
-              <span className="text-[#00C950] font-medium text-[12px]">\u25cf</span>
-              <span className="text-[#6a7282]">Live UV data</span>
-            </>
+            <><span className="text-[#00C950] font-medium text-[12px]">&#9679;</span>
+              <span className="text-[#6a7282]">Live UV data</span></>
           )
         ) : (
           <span className="text-[#6a7282]">Click map or search to get UV details</span>

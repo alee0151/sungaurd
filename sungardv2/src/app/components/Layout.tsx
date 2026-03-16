@@ -9,7 +9,6 @@ import {
   type UVCacheEntry,
 } from "../utils/uvCache";
 
-// Shared UV data context so all pages can access the same UV state
 interface UVData {
   currentUV: number;
   riskLevel: string;
@@ -22,9 +21,18 @@ interface UVData {
   uvCacheAgeMinutes: number;
 }
 
+// Full UV payload passed from the map when a new location is selected
+export interface LocationUVPayload {
+  uv: number;
+  locationName: string;
+  hourlyForecast: { time: string; uv: number }[];
+  fromCache: boolean;
+  cacheAgeMinutes: number;
+}
+
 interface AppContextType {
   uvData: UVData;
-  setUVDataOverrides: (uv: number, locationName: string) => void;
+  setUVDataOverrides: (payload: LocationUVPayload) => void;
   skinType: number;
   setSkinType: (type: number) => void;
   isLoggedIn: boolean;
@@ -63,12 +71,10 @@ async function fetchUVFromAPI(
   lon: number
 ): Promise<{ currentUV: number; hourlyForecast: { time: string; uv: number }[] }> {
   if (!OW_API_KEY) throw new Error("VITE_OPENWEATHER_API_KEY is not set in .env");
-
   const url = `https://api.openweathermap.org/data/3.0/onecall?lat=${lat}&lon=${lon}&exclude=minutely,daily,alerts&appid=${OW_API_KEY}&units=metric`;
   const res = await fetch(url);
   if (!res.ok) throw new Error(`OpenWeatherMap API error: ${res.status}`);
   const data = await res.json();
-
   const currentUV = Math.round(data.current.uvi * 10) / 10;
   const currentHour = new Date().getHours();
   const hourlyForecast = (data.hourly as any[])
@@ -77,7 +83,6 @@ async function fetchUVFromAPI(
       time: `${String((currentHour + i) % 24).padStart(2, "0")}:00`,
       uv: Math.round((h.uvi ?? 0) * 10) / 10,
     }));
-
   return { currentUV, hourlyForecast };
 }
 
@@ -94,14 +99,18 @@ export default function Layout() {
   const [uvFromCache, setUvFromCache] = useState(false);
   const [uvCacheAge, setUvCacheAge] = useState(0);
 
-  const setUVDataOverrides = (uv: number, locationName: string) => {
-    setCurrentUV(uv);
-    setCurrentLocation(locationName);
+  // Called by UVMap whenever the user pins a new location
+  // Now receives the FULL payload including hourly forecast
+  const setUVDataOverrides = (payload: LocationUVPayload) => {
+    setCurrentUV(payload.uv);
+    setCurrentLocation(payload.locationName);
+    setHourlyForecast(payload.hourlyForecast);
+    setUvFromCache(payload.fromCache);
+    setUvCacheAge(payload.cacheAgeMinutes);
   };
 
   useEffect(() => {
     purgeExpiredUVCache();
-
     const stored = localStorage.getItem("sunguard_loggedin");
     const storedUser = localStorage.getItem("sunguard_username");
     if (stored === "true" && storedUser) {
@@ -124,11 +133,9 @@ export default function Layout() {
           .then((r) => r.json())
           .then((geo) => {
             const addr = geo.address || {};
-            const city =
-              addr.suburb || addr.city || addr.town || addr.village || addr.county || "Your Location";
+            const city = addr.suburb || addr.city || addr.town || addr.village || addr.county || "Your Location";
             const state = addr.state || "";
-            const locationName = state ? `${city}, ${state}` : city;
-            loadUVForCoords(lat, lon, locationName);
+            loadUVForCoords(lat, lon, state ? `${city}, ${state}` : city);
           })
           .catch(() => loadUVForCoords(lat, lon, "Your Location"));
       },
@@ -140,8 +147,6 @@ export default function Layout() {
   async function loadUVForCoords(lat: number, lon: number, locationName: string) {
     setUvLoading(true);
     setCurrentLocation(locationName);
-
-    // Check cache first
     const cached = readUVCache(lat, lon);
     if (cached) {
       setCurrentUV(cached.uv);
@@ -151,25 +156,13 @@ export default function Layout() {
       setUvLoading(false);
       return;
     }
-
-    // Cache miss — fetch from API
     try {
       const { currentUV: uv, hourlyForecast: forecast } = await fetchUVFromAPI(lat, lon);
       setCurrentUV(uv);
       setHourlyForecast(forecast);
       setUvFromCache(false);
       setUvCacheAge(0);
-
-      // Write to cache
-      const entry: UVCacheEntry = {
-        uv,
-        hourlyForecast: forecast,
-        locationName,
-        lat,
-        lon,
-        fetchedAt: Date.now(),
-      };
-      writeUVCache(entry);
+      writeUVCache({ uv, hourlyForecast: forecast, locationName, lat, lon, fetchedAt: Date.now() } as UVCacheEntry);
     } catch (err) {
       console.error("Failed to fetch UV data:", err);
       setCurrentUV(0);
@@ -211,86 +204,44 @@ export default function Layout() {
   ];
 
   return (
-    <AppContext.Provider
-      value={{
-        uvData,
-        setUVDataOverrides,
-        skinType,
-        setSkinType,
-        isLoggedIn,
-        setIsLoggedIn,
-        username,
-        setUsername,
-      }}
-    >
+    <AppContext.Provider value={{ uvData, setUVDataOverrides, skinType, setSkinType, isLoggedIn, setIsLoggedIn, username, setUsername }}>
       <div className="min-h-screen bg-[#fafafa]">
         <header className="bg-white shadow-sm sticky top-0 z-50">
           <div className="max-w-[1400px] mx-auto px-6 flex items-center justify-between h-[72px]">
             <div className="flex items-center gap-3">
-              <div
-                className="w-12 h-12 rounded-full flex items-center justify-center"
-                style={{
-                  backgroundImage:
-                    "linear-gradient(135deg, rgb(255, 137, 4) 0%, rgb(246, 51, 154) 100%)",
-                }}
-              >
+              <div className="w-12 h-12 rounded-full flex items-center justify-center"
+                style={{ backgroundImage: "linear-gradient(135deg, rgb(255, 137, 4) 0%, rgb(246, 51, 154) 100%)" }}>
                 <Sun className="text-white" size={24} />
               </div>
               <div>
-                <p className="text-[#101828] text-[18px]" style={{ fontWeight: 700 }}>
-                  SunGuard
-                </p>
+                <p className="text-[#101828] text-[18px]" style={{ fontWeight: 700 }}>SunGuard</p>
                 <p className="text-[#6a7282] text-[13px]">UV Protection Monitor</p>
               </div>
             </div>
-
             <nav className="flex items-center gap-2">
               {navItems.map((item) => (
-                <NavLink
-                  key={item.to}
-                  to={item.to}
-                  end={item.end}
+                <NavLink key={item.to} to={item.to} end={item.end}
                   className={({ isActive }) =>
                     `flex items-center gap-2 px-5 py-2.5 rounded-xl text-[14px] transition-colors ${
-                      isActive
-                        ? "bg-[#ffedd4] text-[#ca3500]"
-                        : "text-[#4a5565] hover:bg-gray-100"
-                    }`
-                  }
-                  style={{ fontWeight: 500 }}
-                >
-                  <item.icon size={18} />
-                  {item.label}
+                      isActive ? "bg-[#ffedd4] text-[#ca3500]" : "text-[#4a5565] hover:bg-gray-100"
+                    }`}
+                  style={{ fontWeight: 500 }}>
+                  <item.icon size={18} />{item.label}
                 </NavLink>
               ))}
-
-              <Link
-                to="/"
-                className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-[14px] transition-colors text-[#4a5565] hover:bg-blue-50 hover:text-[#155dfc]"
-                style={{ fontWeight: 500 }}
-              >
-                <Info size={18} />
-                About
+              <Link to="/" className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-[14px] transition-colors text-[#4a5565] hover:bg-blue-50 hover:text-[#155dfc]" style={{ fontWeight: 500 }}>
+                <Info size={18} />About
               </Link>
-
               <div className="w-px h-6 bg-gray-200 mx-1" />
-
-              <button
-                onClick={handleLogout}
+              <button onClick={handleLogout}
                 className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-[14px] transition-colors text-[#4a5565] hover:bg-red-50 hover:text-red-600 cursor-pointer"
-                style={{ fontWeight: 500 }}
-                title="Logout"
-              >
-                <LogOut size={18} />
-                Logout
+                style={{ fontWeight: 500 }} title="Logout">
+                <LogOut size={18} />Logout
               </button>
             </nav>
           </div>
         </header>
-
-        <main className="max-w-[1400px] mx-auto px-6 py-6">
-          <Outlet />
-        </main>
+        <main className="max-w-[1400px] mx-auto px-6 py-6"><Outlet /></main>
       </div>
     </AppContext.Provider>
   );

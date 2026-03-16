@@ -1,21 +1,20 @@
 import { AlertTriangle, Shield, Clock, TrendingUp, Sun, MapPin, RefreshCw, Zap } from "lucide-react";
 import {
   AreaChart, Area,
-  LineChart, Line,
   XAxis, YAxis, CartesianGrid, Tooltip,
-  ReferenceLine, ResponsiveContainer, Legend,
+  ReferenceLine, ResponsiveContainer,
 } from "recharts";
 import { useAppContext } from "./Layout";
 import { UVMap } from "./UVMap";
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState } from "react";
 import type { CSSProperties } from "react";
 
 const uvScale = [
-  { label: "Low (0-2)",      color: "#00C950" },
-  { label: "Moderate (3-5)", color: "#F0B100" },
-  { label: "High (6-7)",     color: "#FF6900" },
+  { label: "Low (0-2)",       color: "#00C950" },
+  { label: "Moderate (3-5)",  color: "#F0B100" },
+  { label: "High (6-7)",      color: "#FF6900" },
   { label: "Very High (8-10)",color: "#FB2C36" },
-  { label: "Extreme (11+)",  color: "#9810FA" },
+  { label: "Extreme (11+)",   color: "#9810FA" },
 ];
 
 function getUVRange(uv: number) {
@@ -48,40 +47,18 @@ function formatFetchTime(date: Date): string {
   return date.toLocaleTimeString("en-AU", { hour: "2-digit", minute: "2-digit", hour12: true });
 }
 
-// ---------------------------------------------------------------------------
-// Historical UV types
-// ---------------------------------------------------------------------------
-interface MonthlyRow  { month: string; [year: string]: string | number | null; }
-interface YearlyRow   { year: string; avgUv: number | null; }
-interface HistoricalData {
-  monthly: MonthlyRow[];
-  yearly:  YearlyRow[];
-  years:   string[];
-  cached:  boolean;
-}
-
-type HistoricalView = "monthly" | "yearly";
-
-const YEAR_PALETTE = ["#F59E0B", "#FF6900", "#FB2C36", "#9810FA", "#155dfc", "#00C950"];
-
 const backendUrl = import.meta.env.VITE_BACKEND_URL;
 
 export default function DashboardPage() {
   const { uvData, setUVDataOverrides } = useAppContext();
   const { currentUV, riskLevel, riskColor, peakHours, hourlyForecast, locationName, uvLoading, uvFromCache, uvCacheAgeMinutes } = uvData;
 
-  const [sunscreenRec, setSunscreenRec]   = useState<SunscreenRecommendation | null>(null);
-  const [recSource, setRecSource]         = useState<"backend" | "fallback" | "loading">("loading");
-  const [fetchedAt, setFetchedAt]         = useState<Date | null>(null);
-  const [histView, setHistView]           = useState<HistoricalView>("monthly");
-  const [histData, setHistData]           = useState<HistoricalData | null>(null);
-  const [histLoading, setHistLoading]     = useState(false);
-  const [histError, setHistError]         = useState<string | null>(null);
-  const histFetchedRef                    = useRef(false); // fetch once per mount
+  const [sunscreenRec, setSunscreenRec] = useState<SunscreenRecommendation | null>(null);
+  const [recSource, setRecSource]       = useState<"backend" | "fallback" | "loading">("loading");
+  const [fetchedAt, setFetchedAt]       = useState<Date | null>(null);
 
   useEffect(() => { if (!uvLoading) setFetchedAt(new Date()); }, [uvLoading, currentUV]);
 
-  // Sunscreen recommendation
   useEffect(() => {
     async function fetchRecommendation() {
       if (!backendUrl) { setSunscreenRec(getFallbackRecommendation(currentUV)); setRecSource("fallback"); return; }
@@ -96,41 +73,12 @@ export default function DashboardPage() {
     fetchRecommendation();
   }, [currentUV]);
 
-  // Historical UV — fetch once when we have a location
-  useEffect(() => {
-    if (uvLoading || histFetchedRef.current) return;
-    if (!backendUrl) return;
-    histFetchedRef.current = true;
-
-    // Try to get lat/lon from the stored location string
-    // Layout.tsx stores the raw coord string like "lat,lon" in sunguard_location
-    // If not available, let the backend default to Melbourne
-    const storedCoords = localStorage.getItem("sunguard_coords"); // "lat,lon" if available
-    const params = new URLSearchParams({ years: "4" });
-    if (storedCoords) {
-      const [lat, lon] = storedCoords.split(",");
-      if (lat && lon) { params.set("lat", lat); params.set("lon", lon); }
-    }
-
-    setHistLoading(true);
-    setHistError(null);
-    fetch(`${backendUrl}/uv/historical?${params}`)
-      .then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
-      .then((data: HistoricalData) => setHistData(data))
-      .catch(err => setHistError(err.message))
-      .finally(() => setHistLoading(false));
-  }, [uvLoading]);
-
   const savedLocation = localStorage.getItem("sunguard_location") || undefined;
 
-  const maxForecastUV    = hourlyForecast.length > 0 ? Math.max(...hourlyForecast.map(h => h.uv), currentUV) : currentUV;
-  const yAxisMax         = Math.max(4, Math.ceil(maxForecastUV * 1.2));
-  const forecastColor    = getForecastGradientColor(maxForecastUV);
+  const maxForecastUV = hourlyForecast.length > 0 ? Math.max(...hourlyForecast.map(h => h.uv), currentUV) : currentUV;
+  const yAxisMax      = Math.max(4, Math.ceil(maxForecastUV * 1.2));
+  const forecastColor = getForecastGradientColor(maxForecastUV);
 
-  const yearColors: Record<string, string> = {};
-  (histData?.years ?? []).forEach((yr, i) => { yearColors[yr] = YEAR_PALETTE[i % YEAR_PALETTE.length]; });
-
-  // Tooltip for hourly forecast
   const CustomTooltip = ({ active, payload, label }: any) => {
     if (!active || !payload?.length) return null;
     const uv    = payload[0].value;
@@ -142,25 +90,6 @@ export default function DashboardPage() {
         <p className="font-bold text-[#101828]">UV Index: <span style={{ color }}>{uv}</span></p>
         <p className="text-[#6B7280]">{risk}</p>
         {uv >= 3 && <p className="text-[#FF6900] font-medium mt-1">SPF 50+ required</p>}
-      </div>
-    );
-  };
-
-  // Tooltip for historical chart
-  const HistoricalTooltip = ({ active, payload, label }: any) => {
-    if (!active || !payload?.length) return null;
-    return (
-      <div className="bg-white border border-gray-200 rounded-xl shadow-md px-4 py-3 text-[13px] min-w-[140px]">
-        <p className="text-[#6B7280] font-semibold mb-2">{label}</p>
-        {payload.map((p: any) => (
-          <div key={p.dataKey} className="flex items-center justify-between gap-4">
-            <span className="flex items-center gap-1.5">
-              <span className="w-2.5 h-2.5 rounded-full inline-block" style={{ background: p.color }} />
-              <span className="text-[#4a5565]">{p.dataKey}</span>
-            </span>
-            <span className="font-bold" style={{ color: p.color }}>{p.value ?? "–"}</span>
-          </div>
-        ))}
       </div>
     );
   };
@@ -334,112 +263,6 @@ export default function DashboardPage() {
                   dot={{ fill: forecastColor, r: 3, strokeWidth: 0 }} activeDot={{ r: 5, fill: forecastColor, strokeWidth: 0 }} />
               </AreaChart>
             </ResponsiveContainer>
-          </div>
-        )}
-      </div>
-
-      {/* Historical UV Trend */}
-      <div className="bg-white rounded-2xl border border-black/10 p-6">
-        <div className="flex items-start justify-between mb-1">
-          <div className="flex items-center gap-2">
-            <TrendingUp size={18} className="text-[#F54900]" />
-            <h3 className="text-[#0a0a0a] text-[16px]" style={{ fontWeight: 500 }}>Historical UV Trend</h3>
-          </div>
-          <div className="flex items-center gap-3">
-            {histData?.cached === false && (
-              <span className="text-[11px] text-green-600 bg-green-50 border border-green-200 px-2 py-0.5 rounded-lg">Live data</span>
-            )}
-            {histData?.cached === true && (
-              <span className="text-[11px] text-amber-600 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-lg">Cached</span>
-            )}
-            <div className="flex bg-gray-100 rounded-lg p-0.5 gap-0.5">
-              {(["monthly", "yearly"] as HistoricalView[]).map(v => (
-                <button key={v} onClick={() => setHistView(v)}
-                  className={`px-3 py-1.5 rounded-md text-[12px] font-medium transition-colors ${
-                    histView === v ? "bg-white text-[#101828] shadow-sm border border-black/5" : "text-[#6B7280] hover:text-[#101828]"
-                  }`}>
-                  {v === "monthly" ? "Monthly" : "Yearly Avg"}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-        <p className="text-[#717182] text-[14px] mb-5">
-          {histView === "monthly"
-            ? `Monthly average UV index by year \u2014 ${histData?.years?.join(", ") ?? "loading..."} \u00b7 ${locationName ?? "your location"}`
-            : `Annual average UV index \u00b7 ${locationName ?? "your location"}`}
-        </p>
-
-        <div className="h-[260px] w-full min-w-0 min-h-0">
-          {histLoading ? (
-            <div className="h-full flex flex-col items-center justify-center gap-2">
-              <div className="w-8 h-8 border-2 border-[#FF6900] border-t-transparent rounded-full animate-spin" />
-              <p className="text-[#717182] text-[13px]">Fetching historical UV data...</p>
-            </div>
-          ) : histError ? (
-            <div className="h-full flex flex-col items-center justify-center gap-2">
-              <p className="text-red-500 text-[13px]">Could not load historical data.</p>
-              <p className="text-[#717182] text-[12px]">{histError}</p>
-            </div>
-          ) : !histData ? (
-            <div className="h-full flex items-center justify-center">
-              <p className="text-[#717182] text-[13px]">No historical data available.</p>
-            </div>
-          ) : histView === "monthly" ? (
-            <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
-              <LineChart data={histData.monthly} margin={{ top: 4, right: 8, bottom: 0, left: -10 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
-                <XAxis dataKey="month" tick={{ fontSize: 12, fill: "#6B7280" }} axisLine={{ stroke: "#E5E7EB" }} tickLine={false} />
-                <YAxis tick={{ fontSize: 12, fill: "#6B7280" }} axisLine={false} tickLine={false} domain={[0, 14]} tickCount={8} />
-                <ReferenceLine y={3}  stroke="#F0B100" strokeDasharray="4 3" label={{ value: "Mod",    position: "insideTopRight", fontSize: 9, fill: "#b45309" }} />
-                <ReferenceLine y={6}  stroke="#FF6900" strokeDasharray="4 3" label={{ value: "High",   position: "insideTopRight", fontSize: 9, fill: "#FF6900" }} />
-                <ReferenceLine y={8}  stroke="#FB2C36" strokeDasharray="4 3" label={{ value: "V.High", position: "insideTopRight", fontSize: 9, fill: "#FB2C36" }} />
-                <ReferenceLine y={11} stroke="#9810FA" strokeDasharray="4 3" label={{ value: "Extreme",position: "insideTopRight", fontSize: 9, fill: "#9810FA" }} />
-                <Tooltip content={<HistoricalTooltip />} />
-                <Legend iconType="circle" iconSize={8} formatter={v => <span style={{ fontSize: 12, color: "#4a5565" }}>{v}</span>} />
-                {histData.years.map(yr => (
-                  <Line key={yr} type="monotone" dataKey={yr}
-                    stroke={yearColors[yr]} strokeWidth={2}
-                    dot={{ fill: yearColors[yr], r: 2.5, strokeWidth: 0 }}
-                    activeDot={{ r: 5, strokeWidth: 0 }} name={yr}
-                    connectNulls
-                  />
-                ))}
-              </LineChart>
-            </ResponsiveContainer>
-          ) : (
-            <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
-              <LineChart data={histData.yearly} margin={{ top: 4, right: 8, bottom: 0, left: -10 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
-                <XAxis dataKey="year" tick={{ fontSize: 12, fill: "#6B7280" }} axisLine={{ stroke: "#E5E7EB" }} tickLine={false} />
-                <YAxis tick={{ fontSize: 12, fill: "#6B7280" }} axisLine={false} tickLine={false} domain={[0, 12]} tickCount={7} />
-                <Tooltip contentStyle={{ borderRadius: 10, border: "1px solid #e5e7eb", fontSize: 13 }} formatter={(v: any) => [v, "Annual Avg UV"]} />
-                <Line type="monotone" dataKey="avgUv" stroke="#F59E0B" strokeWidth={2.5}
-                  dot={{ fill: "#F59E0B", r: 5, strokeWidth: 0 }}
-                  activeDot={{ r: 7, fill: "#FF6900", strokeWidth: 0 }}
-                  name="Annual Avg UV" connectNulls
-                />
-              </LineChart>
-            </ResponsiveContainer>
-          )}
-        </div>
-
-        {/* Peak summary footer */}
-        {histData && !histLoading && (
-          <div className="mt-4 pt-4 border-t border-black/5 flex flex-wrap gap-x-6 gap-y-2">
-            {histData.yearly.map(row => {
-              const monthlyForYear = histData.monthly.map(m => ({ month: m.month, uv: m[row.year] as number | null }));
-              const valid = monthlyForYear.filter(m => m.uv !== null);
-              const peak  = valid.reduce((a, b) => (b.uv! > a.uv! ? b : a), valid[0]);
-              return (
-                <div key={row.year} className="flex items-center gap-1.5 text-[12px]">
-                  <span className="w-2.5 h-2.5 rounded-full" style={{ background: yearColors[row.year] }} />
-                  <span className="text-[#6a7282]">{row.year} peak:</span>
-                  <span className="font-semibold text-[#101828]">{peak?.uv ?? "–"} in {peak?.month ?? "–"}</span>
-                </div>
-              );
-            })}
-            <span className="ml-auto text-[11px] text-[#9ca3af]">Source: Open-Meteo Historical Climate API</span>
           </div>
         )}
       </div>

@@ -40,12 +40,51 @@ function getForecastGradientColor(maxUV: number): string {
 
 type SunscreenRecommendation = { riskLevel: string; spfLevel: string; advice: string };
 
+/**
+ * Australian/WHO guidelines:
+ * - UV 0–2 (Low):     No sunscreen required. Sun protection generally not needed.
+ * - UV 3+  (Mod+):    SPF 50+ required at ALL levels from 3 and above.
+ *                     Reapply every 2 hours, wear hat + protective clothing.
+ */
 function getFallbackRecommendation(uv: number): SunscreenRecommendation {
-  if (uv <= 2) return { riskLevel: "Low", spfLevel: "SPF 15+", advice: "Minimal protection needed. SPF 15 is sufficient for most people during low UV periods." };
-  if (uv <= 5) return { riskLevel: "Moderate", spfLevel: "SPF 30+", advice: "Apply SPF 30+ sunscreen. Wear a hat and sunglasses when outdoors for extended periods." };
-  if (uv <= 7) return { riskLevel: "High", spfLevel: "SPF 50+", advice: "SPF 50+ is strongly recommended. Seek shade during peak hours and reapply every 2 hours." };
-  if (uv <= 10) return { riskLevel: "Very High", spfLevel: "SPF 50+", advice: "Maximum protection required. Minimize outdoor exposure, wear protective clothing, and reapply SPF 50+ every 2 hours." };
-  return { riskLevel: "Extreme", spfLevel: "SPF 50+", advice: "Extreme UV levels. Avoid outdoor exposure where possible. Full protective clothing and SPF 50+ are essential." };
+  if (uv <= 2) {
+    return {
+      riskLevel: "Low",
+      spfLevel: "No sunscreen required",
+      advice:
+        "UV index is low — sun protection is generally not needed. You can enjoy time outdoors without sunscreen, though a hat is still a good habit.",
+    };
+  }
+  if (uv <= 5) {
+    return {
+      riskLevel: "Moderate",
+      spfLevel: "SPF 50+",
+      advice:
+        "Apply SPF 50+ sunscreen 20 minutes before going outside and reapply every 2 hours. Wear a broad-brimmed hat and UV-protective sunglasses.",
+    };
+  }
+  if (uv <= 7) {
+    return {
+      riskLevel: "High",
+      spfLevel: "SPF 50+",
+      advice:
+        "SPF 50+ is essential. Apply generously 20 minutes before sun exposure and reapply every 2 hours or after swimming/sweating. Seek shade during peak hours and cover up with sun-protective clothing.",
+    };
+  }
+  if (uv <= 10) {
+    return {
+      riskLevel: "Very High",
+      spfLevel: "SPF 50+",
+      advice:
+        "Maximum protection required. Apply SPF 50+ liberally, wear long sleeves, a broad-brimmed hat, and UV-wrap sunglasses. Minimise time outdoors between 10 am and 3 pm and reapply sunscreen every 2 hours.",
+    };
+  }
+  return {
+    riskLevel: "Extreme",
+    spfLevel: "SPF 50+",
+    advice:
+      "Extreme UV — avoid outdoor exposure where possible. If you must go outside, apply SPF 50+ to all exposed skin, wear full-coverage sun-protective clothing, a broad-brimmed hat, and UV-wrap sunglasses. Reapply sunscreen every 2 hours.",
+  };
 }
 
 function formatFetchTime(date: Date): string {
@@ -66,13 +105,20 @@ export default function DashboardPage() {
 
   useEffect(() => {
     async function fetchRecommendation() {
-      if (!backendUrl) { setSunscreenRec(getFallbackRecommendation(currentUV)); setRecSource("fallback"); return; }
+      if (!backendUrl) {
+        setSunscreenRec(getFallbackRecommendation(currentUV));
+        setRecSource("fallback");
+        return;
+      }
       try {
         const response = await fetch(`${backendUrl}/uv/recommendation?uvLevel=${currentUV}`);
         if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
         setSunscreenRec(await response.json());
         setRecSource("backend");
-      } catch { setSunscreenRec(getFallbackRecommendation(currentUV)); setRecSource("fallback"); }
+      } catch {
+        setSunscreenRec(getFallbackRecommendation(currentUV));
+        setRecSource("fallback");
+      }
     }
     fetchRecommendation();
   }, [currentUV]);
@@ -95,9 +141,22 @@ export default function DashboardPage() {
         <p className="text-[#6B7280] mb-1">{label}</p>
         <p className="font-bold text-[#101828]">UV Index: <span style={{ color }}>{uv}</span></p>
         <p className="text-[#6B7280]">{risk}</p>
+        {uv >= 3 && <p className="text-[#FF6900] font-medium mt-1">SPF 50+ required</p>}
       </div>
     );
   };
+
+  // Determine recommendation card background + icon colour based on UV level
+  const recCardStyle =
+    currentUV <= 2
+      ? { bg: "bg-[#f0fdf4]", border: "border-[#bbf7d0]", iconColor: "text-[#00C950]" }
+      : currentUV <= 5
+      ? { bg: "bg-[#fefce8]", border: "border-[#fde68a]", iconColor: "text-[#F0B100]" }
+      : currentUV <= 7
+      ? { bg: "bg-[#fff7ed]", border: "border-[#ff6900]", iconColor: "text-[#FF6900]" }
+      : currentUV <= 10
+      ? { bg: "bg-[#fff1f2]", border: "border-[#fca5a5]", iconColor: "text-[#FB2C36]" }
+      : { bg: "bg-[#faf5ff]", border: "border-[#c084fc]", iconColor: "text-[#9810FA]" };
 
   return (
     <div className="flex flex-col gap-6">
@@ -109,6 +168,16 @@ export default function DashboardPage() {
             <p className="text-[#7e2a0c] text-[14px]" style={{ fontWeight: 500 }}>High UV Alert</p>
             <p className="text-[#9f2d00] text-[14px]">UV levels are currently high ({currentUV}) in {locationName}. Apply SPF 50+ and seek shade during peak hours.</p>
           </div>
+        </div>
+      )}
+
+      {/* Sunscreen threshold reminder — shown when UV is 3–5 (moderate, easy to overlook) */}
+      {currentUV >= 3 && currentUV <= 5 && !uvLoading && (
+        <div className="bg-[#fefce8] border border-[#fde68a] rounded-xl px-5 py-3 flex items-center gap-3">
+          <Sun size={16} className="text-[#F0B100] shrink-0" />
+          <p className="text-[#713f12] text-[13px]">
+            UV is {currentUV} — sunscreen is required from UV 3 and above. Apply <strong>SPF 50+</strong> before heading out.
+          </p>
         </div>
       )}
 
@@ -130,7 +199,6 @@ export default function DashboardPage() {
             )}
           </div>
 
-          {/* Location + fetched time */}
           <div className="flex items-center gap-4 mt-3 pb-4 border-b border-black/5">
             <div className="flex items-center gap-1.5 text-[13px] text-[#4a5565]">
               <MapPin size={13} className="text-[#F54900] shrink-0" />
@@ -163,7 +231,11 @@ export default function DashboardPage() {
                   </div>
                 </div>
                 <p className="text-[#4a5565] text-[14px] mt-3">
-                  {currentUV === 0 ? "UV index is 0 — no sun protection needed right now." : "Protection required. Seek shade during midday hours."}
+                  {currentUV <= 2
+                    ? "UV is low — no sun protection needed right now."
+                    : currentUV <= 5
+                    ? "Sunscreen required. Apply SPF 50+ before going outside."
+                    : "High UV — SPF 50+ essential. Seek shade during peak hours."}
                 </p>
               </div>
               <div className="flex flex-col gap-2">
@@ -220,7 +292,7 @@ export default function DashboardPage() {
             </div>
           )}
         </div>
-        <p className="text-[#717182] text-[14px] mb-6">Plan your outdoor activities safely</p>
+        <p className="text-[#717182] text-[14px] mb-6">Plan your outdoor activities safely — SPF 50+ required when UV reaches 3</p>
 
         {uvLoading ? (
           <div className="h-[300px] flex items-center justify-center">
@@ -248,7 +320,8 @@ export default function DashboardPage() {
                 <YAxis tick={{ fontSize: 12, fill: "#6B7280" }} axisLine={{ stroke: "#6B7280" }} tickLine={{ stroke: "#6B7280" }}
                   label={{ value: "UV Index", angle: -90, position: "insideLeft", style: { fontSize: 12, fill: "#808080" } }}
                   domain={[0, yAxisMax]} allowDecimals={false} />
-                <ReferenceLine y={3} stroke="#F0B100" strokeDasharray="4 4" label={{ value: "Mod", position: "insideTopRight", fontSize: 10, fill: "#F0B100" }} />
+                {/* SPF 50+ threshold — the key line */}
+                <ReferenceLine y={3} stroke="#F0B100" strokeDasharray="4 4" label={{ value: "SPF 50+ required", position: "insideTopRight", fontSize: 10, fill: "#b45309" }} />
                 <ReferenceLine y={6} stroke="#FF6900" strokeDasharray="4 4" label={{ value: "High", position: "insideTopRight", fontSize: 10, fill: "#FF6900" }} />
                 <ReferenceLine y={8} stroke="#FB2C36" strokeDasharray="4 4" label={{ value: "V.High", position: "insideTopRight", fontSize: 10, fill: "#FB2C36" }} />
                 <Tooltip content={<CustomTooltip />} />
@@ -281,21 +354,46 @@ export default function DashboardPage() {
         <div className="flex items-center justify-between">
           <div>
             <h3 className="text-[#0a0a0a] text-[16px]" style={{ fontWeight: 500 }}>Sunscreen Recommendation</h3>
-            <p className="text-[#717182] text-[14px] mt-1">Based on current UV index</p>
+            <p className="text-[#717182] text-[14px] mt-1">
+              Based on current UV index — SPF 50+ is required at UV 3 and above
+            </p>
           </div>
           {recSource === "fallback" && (
             <span className="text-[11px] text-[#6a7282] bg-gray-100 px-2 py-1 rounded-lg border border-black/5">Built-in data</span>
           )}
         </div>
-        <div className="mt-4 bg-[#fff7ed] rounded-xl px-5 py-4 flex items-start gap-3">
-          <Sun size={20} className="text-[#F54900] mt-0.5 shrink-0" />
-          <div>
+
+        <div className={`mt-4 ${recCardStyle.bg} border ${recCardStyle.border} rounded-xl px-5 py-4 flex items-start gap-3`}>
+          <Sun size={20} className={`${recCardStyle.iconColor} mt-0.5 shrink-0`} />
+          <div className="flex-1">
             <p className="text-[#101828] text-[14px]" style={{ fontWeight: 600 }}>
-              {sunscreenRec ? `${sunscreenRec.spfLevel} strongly recommended for ${riskLevel.toLowerCase()} UV levels.` : "Loading recommendation..."}
+              {sunscreenRec
+                ? currentUV <= 2
+                  ? "No sunscreen required at UV 0–2."
+                  : `${sunscreenRec.spfLevel} required — UV is currently ${currentUV} (${riskLevel}).`
+                : "Loading recommendation..."}
             </p>
             <p className="text-[#4a5565] text-[14px] mt-1">
               {sunscreenRec ? sunscreenRec.advice : "Calculating advice based on current UV index..."}
             </p>
+
+            {/* SPF application checklist — shown for UV >= 3 */}
+            {sunscreenRec && currentUV >= 3 && (
+              <ul className="mt-3 flex flex-col gap-1.5">
+                {[
+                  "Apply SPF 50+ 20 minutes before going outside",
+                  "Reapply every 2 hours, or after swimming or sweating",
+                  "Wear a broad-brimmed hat and UV-protective sunglasses",
+                  currentUV >= 6 ? "Seek shade between 10 am and 3 pm" : null,
+                  currentUV >= 8 ? "Wear long sleeves and sun-protective clothing" : null,
+                ].filter(Boolean).map((tip) => (
+                  <li key={tip} className="flex items-start gap-2 text-[13px] text-[#4a5565]">
+                    <span className="text-[#FF6900] mt-0.5">✓</span>
+                    {tip}
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
         </div>
       </div>

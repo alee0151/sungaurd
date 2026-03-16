@@ -52,10 +52,6 @@ export function useAppContext() {
 // Auth helpers
 // ---------------------------------------------------------------------------
 
-/**
- * Decode a JWT payload without verifying the signature.
- * Used client-side only to check the `exp` claim before making a network call.
- */
 function decodeJwtPayload(token: string): Record<string, any> | null {
   try {
     const base64 = token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
@@ -65,16 +61,13 @@ function decodeJwtPayload(token: string): Record<string, any> | null {
   }
 }
 
-/** Returns true if the token is present AND has not expired locally. */
 function isTokenValid(token: string | null): boolean {
   if (!token) return false;
   const payload = decodeJwtPayload(token);
   if (!payload || !payload.exp) return false;
-  // exp is in seconds; Date.now() is in ms
   return payload.exp * 1000 > Date.now();
 }
 
-/** Remove every sunguard key from localStorage. */
 function clearAuthStorage() {
   [
     "sunguard_token",
@@ -82,21 +75,22 @@ function clearAuthStorage() {
     "sunguard_username",
     "sunguard_user_id",
     "sunguard_skin_type",
+    "sunguard_location",
   ].forEach((k) => localStorage.removeItem(k));
 }
 
 const backendUrl = import.meta.env.VITE_BACKEND_URL;
 
 // ---------------------------------------------------------------------------
-// UV helpers (unchanged)
+// UV helpers
 // ---------------------------------------------------------------------------
 
 function getUVRisk(uv: number) {
-  if (uv <= 2) return { level: "Low",       color: "#00C950" };
-  if (uv <= 5) return { level: "Moderate",  color: "#F0B100" };
-  if (uv <= 7) return { level: "High",      color: "#FF6900" };
+  if (uv <= 2)  return { level: "Low",       color: "#00C950" };
+  if (uv <= 5)  return { level: "Moderate",  color: "#F0B100" };
+  if (uv <= 7)  return { level: "High",      color: "#FF6900" };
   if (uv <= 10) return { level: "Very High", color: "#FB2C36" };
-  return          { level: "Extreme",    color: "#9810FA" };
+  return               { level: "Extreme",   color: "#9810FA" };
 }
 
 function derivePeakHours(forecast: { time: string; uv: number }[]): string {
@@ -128,16 +122,39 @@ async function fetchUVFromAPI(
   return { currentUV, hourlyForecast };
 }
 
+/**
+ * Forward geocode a plain-text location string (e.g. "Melbourne, Victoria")
+ * using the free Nominatim API. Returns lat/lon or null if not found.
+ */
+async function geocodeLocation(locationStr: string): Promise<{ lat: number; lon: number; displayName: string } | null> {
+  try {
+    const encoded = encodeURIComponent(locationStr);
+    const res = await fetch(
+      `https://nominatim.openstreetmap.org/search?q=${encoded}&format=json&limit=1`,
+      { headers: { "Accept-Language": "en" } }
+    );
+    const results = await res.json();
+    if (!results.length) return null;
+    return {
+      lat: parseFloat(results[0].lat),
+      lon: parseFloat(results[0].lon),
+      displayName: results[0].display_name.split(",").slice(0, 2).join(",").trim(),
+    };
+  } catch {
+    return null;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Layout component
 // ---------------------------------------------------------------------------
 
 export default function Layout() {
   const navigate = useNavigate();
-  const [skinType, setSkinType]   = useState(3);
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [username, setUsername]   = useState("");
-  const [authChecked, setAuthChecked] = useState(false); // prevent flash of dashboard
+  const [skinType, setSkinType]         = useState(3);
+  const [isLoggedIn, setIsLoggedIn]     = useState(false);
+  const [username, setUsername]         = useState("");
+  const [authChecked, setAuthChecked]   = useState(false);
 
   const [currentLocation, setCurrentLocation] = useState("Detecting location...");
   const [currentUV, setCurrentUV]             = useState(0);
@@ -155,11 +172,11 @@ export default function Layout() {
   };
 
   // -------------------------------------------------------------------------
-  // Auth check on mount
-  // Three-layer validation:
-  //   1. Token must exist in localStorage
-  //   2. Token must not be locally expired (decoded exp claim)
-  //   3. Token must be accepted by the backend GET /users/me
+  // Auth + UV bootstrap
+  // Priority order for UV location:
+  //   1. User's saved location from DB  (e.g. "Melbourne, Victoria")
+  //   2. Browser geolocation             (if no saved location)
+  //   3. Default Melbourne coords        (if geolocation denied)
   // -------------------------------------------------------------------------
   useEffect(() => {
     purgeExpiredUVCache();
@@ -167,21 +184,21 @@ export default function Layout() {
     async function checkAuth() {
       const token = localStorage.getItem("sunguard_token");
 
-      // Layer 1 + 2: quick local checks — no network needed
+      // Layer 1 + 2: quick local JWT checks
       if (!isTokenValid(token)) {
         clearAuthStorage();
         navigate("/login");
         return;
       }
 
-      // Layer 3: verify with backend (catches revoked / tampered tokens)
+      // Layer 3: verify token with backend and fetch user profile
+      let savedLocation: string | null = null;
       try {
         const res = await fetch(`${backendUrl}/users/me`, {
           headers: { Authorization: `Bearer ${token}` },
         });
 
         if (!res.ok) {
-          // 401 = expired or invalid on the server side
           clearAuthStorage();
           navigate("/login");
           return;
@@ -189,21 +206,25 @@ export default function Layout() {
 
         const user = await res.json();
         setIsLoggedIn(true);
-        setUsername(user.username);
-        // Sync skin type from DB if available
+        setUsername(user.nickname || user.username);
         if (user.skin_type) setSkinType(user.skin_type);
-        // Update localStorage with latest values from DB
-        localStorage.setItem("sunguard_loggedin",  "true");
-        localStorage.setItem("sunguard_username",  user.username);
-        localStorage.setItem("sunguard_user_id",   String(user.id));
+
+        // Store latest values from DB
+        localStorage.setItem("sunguard_loggedin", "true");
+        localStorage.setItem("sunguard_username", user.nickname || user.username);
+        localStorage.setItem("sunguard_user_id",  String(user.id));
+        if (user.location) {
+          localStorage.setItem("sunguard_location", user.location);
+          savedLocation = user.location;
+        }
 
       } catch {
-        // Network error — fall back to local token check only
-        // (allows dashboard to load offline if token looks valid)
-        const storedUsername = localStorage.getItem("sunguard_username");
-        if (storedUsername) {
+        // Network error — fall back to localStorage
+        const storedUser = localStorage.getItem("sunguard_username");
+        if (storedUser) {
           setIsLoggedIn(true);
-          setUsername(storedUsername);
+          setUsername(storedUser);
+          savedLocation = localStorage.getItem("sunguard_location");
         } else {
           clearAuthStorage();
           navigate("/login");
@@ -213,14 +234,37 @@ export default function Layout() {
         setAuthChecked(true);
       }
 
-      // Start loading UV data once auth is confirmed
-      startUVLoad();
+      // --- UV load priority ---
+      if (savedLocation) {
+        // Priority 1: geocode the user's saved location string → fetch UV
+        await loadUVForSavedLocation(savedLocation);
+      } else {
+        // Priority 2 & 3: browser geolocation or Melbourne default
+        startUVFromGeolocation();
+      }
     }
 
     checkAuth();
   }, [navigate]);
 
-  function startUVLoad() {
+  /**
+   * Geocode a saved location string and load UV for those coordinates.
+   * Falls back to browser geolocation if geocoding fails.
+   */
+  async function loadUVForSavedLocation(locationStr: string) {
+    setCurrentLocation(locationStr);
+    const coords = await geocodeLocation(locationStr);
+    if (coords) {
+      await loadUVForCoords(coords.lat, coords.lon, locationStr);
+    } else {
+      // Geocoding failed — fall back to browser geolocation
+      console.warn(`[Layout] Could not geocode "${locationStr}", falling back to geolocation.`);
+      startUVFromGeolocation();
+    }
+  }
+
+  /** Use browser geolocation to determine the user's current position. */
+  function startUVFromGeolocation() {
     if (!navigator.geolocation) {
       loadUVForCoords(-37.8136, 144.9631, "Melbourne, AU");
       return;
@@ -231,8 +275,8 @@ export default function Layout() {
         fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json`)
           .then((r) => r.json())
           .then((geo) => {
-            const addr = geo.address || {};
-            const city = addr.suburb || addr.city || addr.town || addr.village || addr.county || "Your Location";
+            const addr  = geo.address || {};
+            const city  = addr.suburb || addr.city || addr.town || addr.village || addr.county || "Your Location";
             const state = addr.state || "";
             loadUVForCoords(lat, lon, state ? `${city}, ${state}` : city);
           })
@@ -279,8 +323,6 @@ export default function Layout() {
     navigate("/login");
   };
 
-  // Don't render the dashboard at all until auth check completes
-  // Prevents a flash of protected content before redirect
   if (!authChecked) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#fafafa]">
@@ -297,21 +339,21 @@ export default function Layout() {
 
   const uvData: UVData = {
     currentUV,
-    riskLevel:        risk.level,
-    riskColor:        risk.color,
+    riskLevel:         risk.level,
+    riskColor:         risk.color,
     peakHours,
     hourlyForecast,
-    locationName:     currentLocation,
+    locationName:      currentLocation,
     uvLoading,
     uvFromCache,
     uvCacheAgeMinutes: uvCacheAge,
   };
 
   const navItems = [
-    { to: "/dashboard",            label: "Dashboard", end: true, icon: Sun      },
-    { to: "/dashboard/education",  label: "Education",            icon: BookOpen },
-    { to: "/dashboard/profile",    label: "Profile",              icon: User     },
-    { to: "/dashboard/reminders",  label: "Reminders",            icon: Bell     },
+    { to: "/dashboard",           label: "Dashboard", end: true, icon: Sun      },
+    { to: "/dashboard/education", label: "Education",            icon: BookOpen },
+    { to: "/dashboard/profile",   label: "Profile",              icon: User     },
+    { to: "/dashboard/reminders", label: "Reminders",            icon: Bell     },
   ];
 
   return (
@@ -355,7 +397,6 @@ export default function Layout() {
                 <Info size={18} />About
               </Link>
 
-              {/* Logged-in username pill */}
               {username && (
                 <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-gray-100 text-[#4a5565] text-[13px]" style={{ fontWeight: 500 }}>
                   <User size={14} />

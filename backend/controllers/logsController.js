@@ -1,97 +1,170 @@
 const pool = require('../db');
 
 // ---------------------------------------------------------------------------
-// Streak maintenance logic
+// UV threshold
+// ---------------------------------------------------------------------------
+const HIGH_UV_THRESHOLD = 3; // UV >= 3 is considered a "high UV" situation
+
+// ---------------------------------------------------------------------------
+// UV-Aware Streak Logic
 //
-// Rules:
-//   - A "streak day" = any calendar day (in the user's local timezone, we use
-//     UTC date here for simplicity) where at least one Application log exists.
-//   - Logging an application TODAY:
-//       * If last_applied_date == yesterday  → current_streak += 1
-//       * If last_applied_date == today      → no change (already counted)
-//       * Otherwise (gap or first time)      → reset to 1
-//   - longest_streak is updated whenever current_streak exceeds it.
+// A "streak day" = a calendar day where the user adequately protected themselves.
+// The rules are:
+//
+// HIGH UV day (uv_index_at_application >= 3):
+//   - User MUST apply sunscreen to earn/maintain streak
+//   - If the user misses a HIGH UV day → streak RESETS
+//   - If user applies → streak extends (or starts)
+//
+// LOW UV day (uv_index_at_application < 3 OR uv unknown):
+//   - Streak is NEVER broken on low UV days (no penalty)
+//   - If user applies anyway → streak EXTENDS (bonus credit)
+//   - If user doesn't apply → streak stays the same (no penalty, no gain)
+//
+// Consecutive day check uses last_credited_date:
+//   - last_credited_date == yesterday → extend
+//   - last_credited_date == today     → already credited, check reapplication compliance
+//   - last_credited_date older        → check if gap days were all low-UV (no penalty) or had high-UV (reset)
 // ---------------------------------------------------------------------------
 
-async function recalculateStreak(userId, client) {
-  const db = client || pool;
+async function recalculateStreak(userId, uvIndex) {
+  const isHighUV = typeof uvIndex === 'number' && uvIndex >= HIGH_UV_THRESHOLD;
 
-  // Ensure streak row exists
-  await db.query(
-    `INSERT INTO user_streaks (user_id) VALUES ($1)
-     ON CONFLICT (user_id) DO NOTHING`,
+  await pool.query(
+    `INSERT INTO user_streaks (user_id) VALUES ($1) ON CONFLICT (user_id) DO NOTHING`,
     [userId]
   );
 
-  const { rows } = await db.query(
-    'SELECT current_streak, longest_streak, last_applied_date FROM user_streaks WHERE user_id = $1',
+  const { rows } = await pool.query(
+    `SELECT current_streak, longest_streak, last_credited_date, last_high_uv_date
+     FROM user_streaks WHERE user_id = $1`,
     [userId]
   );
-  const streak = rows[0];
+  const s = rows[0];
 
-  // Today's date as YYYY-MM-DD (UTC)
-  const todayStr = new Date().toISOString().slice(0, 10);
-  const today    = new Date(todayStr);
+  const todayStr      = new Date().toISOString().slice(0, 10);
+  const lastCredited  = s.last_credited_date
+    ? new Date(s.last_credited_date).toISOString().slice(0, 10) : null;
 
-  const lastDateStr = streak.last_applied_date
-    ? new Date(streak.last_applied_date).toISOString().slice(0, 10)
-    : null;
+  let newCurrent = s.current_streak;
+  let newLastHighUV = s.last_high_uv_date
+    ? new Date(s.last_high_uv_date).toISOString().slice(0, 10) : null;
 
-  let newCurrent = streak.current_streak;
+  if (isHighUV) newLastHighUV = todayStr;
 
-  if (lastDateStr === todayStr) {
-    // Already logged today — no streak change
-  } else if (lastDateStr) {
-    const last      = new Date(lastDateStr);
-    const diffDays  = Math.round((today - last) / (1000 * 60 * 60 * 24));
-    if (diffDays === 1) {
-      // Consecutive day — extend streak
-      newCurrent += 1;
-    } else {
-      // Gap detected — reset streak
-      newCurrent = 1;
-    }
-  } else {
+  if (lastCredited === todayStr) {
+    // Already credited today — no streak change (reapplication within same day is compliance, not a new streak day)
+  } else if (!lastCredited) {
     // First ever application
     newCurrent = 1;
+  } else {
+    const gapDays = Math.round(
+      (new Date(todayStr) - new Date(lastCredited)) / 86400000
+    );
+
+    if (gapDays === 1) {
+      // Consecutive day — always extend
+      newCurrent += 1;
+    } else {
+      // Gap > 1 day. Check if any gap days were HIGH UV.
+      // We approximate by checking if last_high_uv_date falls within the gap.
+      // If the last high UV day is within the gap → user missed a high-UV protection window → RESET
+      // If no high UV days in the gap → low UV gap → no penalty, still extend
+      const lastHighUVStr = newLastHighUV;
+      let gapHadHighUV = false;
+
+      if (lastHighUVStr) {
+        const lastHighUVDate = new Date(lastHighUVStr);
+        const lastCreditedDate = new Date(lastCredited);
+        // If the last high UV event was AFTER the last credited day but BEFORE today → gap had high UV
+        if (lastHighUVDate > lastCreditedDate && lastHighUVStr !== todayStr) {
+          gapHadHighUV = true;
+        }
+      }
+
+      if (gapHadHighUV) {
+        // Missed a high-UV day in the gap → reset
+        newCurrent = 1;
+      } else {
+        // Gap was all low-UV → no penalty, extend streak
+        newCurrent += 1;
+      }
+    }
   }
 
-  const newLongest = Math.max(streak.longest_streak, newCurrent);
+  const newLongest = Math.max(s.longest_streak, newCurrent);
 
-  await db.query(
+  await pool.query(
     `UPDATE user_streaks
-     SET current_streak   = $1,
-         longest_streak   = $2,
-         last_applied_date = $3,
-         updated_at        = NOW()
-     WHERE user_id = $4`,
-    [newCurrent, newLongest, todayStr, userId]
+     SET current_streak      = $1,
+         longest_streak      = $2,
+         last_credited_date  = $3,
+         last_high_uv_date   = $4,
+         updated_at          = NOW()
+     WHERE user_id = $5`,
+    [newCurrent, newLongest, todayStr, newLastHighUV, userId]
   );
 
   return { currentStreak: newCurrent, longestStreak: newLongest };
 }
 
-// POST /logs  — record a new protection event
+// ---------------------------------------------------------------------------
+// Patch the previous Application log with actual_duration_seconds
+// Called each time a new Application is recorded — closes out the prior window
+// ---------------------------------------------------------------------------
+async function closePreviousApplicationWindow(userId, nowMs) {
+  const { rows } = await pool.query(
+    `SELECT id, logged_at, duration_seconds
+     FROM protection_logs
+     WHERE user_id = $1 AND type = 'Application' AND actual_duration_seconds IS NULL
+     ORDER BY logged_at DESC
+     LIMIT 1`,
+    [userId]
+  );
+  if (!rows.length) return;
+
+  const prev = rows[0];
+  const startMs  = new Date(prev.logged_at).getTime();
+  const maxMs    = prev.duration_seconds ? prev.duration_seconds * 1000 : null;
+  const elapsedMs = nowMs - startMs;
+  // Actual = min(elapsed, timer duration) — never exceed what was set
+  const actual = maxMs ? Math.round(Math.min(elapsedMs, maxMs) / 1000) : Math.round(elapsedMs / 1000);
+
+  await pool.query(
+    `UPDATE protection_logs SET actual_duration_seconds = $1 WHERE id = $2`,
+    [actual, prev.id]
+  );
+}
+
+// ---------------------------------------------------------------------------
+// POST /logs
+// Body: { type, message, duration_seconds, uv_index_at_application }
+// ---------------------------------------------------------------------------
 exports.addLog = async (req, res) => {
-  const { type, message, duration_seconds } = req.body;
+  const { type, message, duration_seconds, uv_index_at_application } = req.body;
   if (!type || !message)
     return res.status(400).json({ error: 'type and message are required' });
   if (!['Application', 'Alert'].includes(type))
     return res.status(400).json({ error: 'type must be Application or Alert' });
 
   try {
+    if (type === 'Application') {
+      // Close the previous open application window first
+      await closePreviousApplicationWindow(req.user.id, Date.now());
+    }
+
     const result = await pool.query(
-      `INSERT INTO protection_logs (user_id, type, message, duration_seconds)
-       VALUES ($1, $2, $3, $4)
-       RETURNING id, type, message, duration_seconds, logged_at`,
-      [req.user.id, type, message, duration_seconds || null]
+      `INSERT INTO protection_logs
+         (user_id, type, message, duration_seconds, uv_index_at_application)
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING id, type, message, duration_seconds, actual_duration_seconds, uv_index_at_application, logged_at`,
+      [req.user.id, type, message, duration_seconds || null, uv_index_at_application ?? null]
     );
     const log = result.rows[0];
 
-    // Update streak only for Application events
     let streakUpdate = null;
     if (type === 'Application') {
-      streakUpdate = await recalculateStreak(req.user.id);
+      streakUpdate = await recalculateStreak(req.user.id, uv_index_at_application ?? null);
     }
 
     res.status(201).json({ log, streak: streakUpdate });
@@ -101,15 +174,33 @@ exports.addLog = async (req, res) => {
   }
 };
 
-// GET /logs  — fetch logs for the authenticated user
-// Query params: ?limit=50&type=Application&since=2024-01-01
+// ---------------------------------------------------------------------------
+// PATCH /logs/close-window
+// Called when the user manually stops the timer — records actual duration on the open log
+// Body: { stopped_at_ms }  (epoch ms, optional — defaults to now)
+// ---------------------------------------------------------------------------
+exports.closeWindow = async (req, res) => {
+  const nowMs = req.body.stopped_at_ms || Date.now();
+  try {
+    await closePreviousApplicationWindow(req.user.id, nowMs);
+    res.json({ message: 'Window closed' });
+  } catch (err) {
+    console.error('[closeWindow]', err.message);
+    res.status(500).json({ error: 'Server error' });
+  }
+};
+
+// ---------------------------------------------------------------------------
+// GET /logs
+// ---------------------------------------------------------------------------
 exports.getLogs = async (req, res) => {
   const limit = Math.min(parseInt(req.query.limit) || 50, 200);
-  const type  = req.query.type;  // optional filter
-  const since = req.query.since; // optional ISO date filter
+  const type  = req.query.type;
+  const since = req.query.since;
 
   try {
-    let query = `SELECT id, type, message, duration_seconds, logged_at
+    let query = `SELECT id, type, message, duration_seconds, actual_duration_seconds,
+                        uv_index_at_application, logged_at
                  FROM protection_logs WHERE user_id = $1`;
     const params = [req.user.id];
 
@@ -132,7 +223,9 @@ exports.getLogs = async (req, res) => {
   }
 };
 
-// DELETE /logs  — clear all logs for the authenticated user
+// ---------------------------------------------------------------------------
+// DELETE /logs
+// ---------------------------------------------------------------------------
 exports.clearLogs = async (req, res) => {
   try {
     await pool.query('DELETE FROM protection_logs WHERE user_id = $1', [req.user.id]);
@@ -143,7 +236,11 @@ exports.clearLogs = async (req, res) => {
   }
 };
 
-// GET /logs/streak  — return current and longest streak for the user
+// ---------------------------------------------------------------------------
+// GET /logs/streak
+// Checks if a high-UV day was missed since last credited date — if so, resets streak
+// Low-UV gaps do NOT reset streak
+// ---------------------------------------------------------------------------
 exports.getStreak = async (req, res) => {
   try {
     await pool.query(
@@ -151,41 +248,50 @@ exports.getStreak = async (req, res) => {
       [req.user.id]
     );
     const { rows } = await pool.query(
-      'SELECT current_streak, longest_streak, last_applied_date FROM user_streaks WHERE user_id = $1',
+      `SELECT current_streak, longest_streak, last_credited_date, last_high_uv_date
+       FROM user_streaks WHERE user_id = $1`,
       [req.user.id]
     );
     const s = rows[0];
 
-    // Detect broken streak: if last_applied_date was more than 1 day ago, reset
-    const todayStr    = new Date().toISOString().slice(0, 10);
-    const lastDateStr = s.last_applied_date
-      ? new Date(s.last_applied_date).toISOString().slice(0, 10)
-      : null;
+    const todayStr       = new Date().toISOString().slice(0, 10);
+    const lastCredited   = s.last_credited_date
+      ? new Date(s.last_credited_date).toISOString().slice(0, 10) : null;
+    const lastHighUVStr  = s.last_high_uv_date
+      ? new Date(s.last_high_uv_date).toISOString().slice(0, 10) : null;
 
-    if (lastDateStr && lastDateStr !== todayStr) {
-      const diffDays = Math.round(
-        (new Date(todayStr) - new Date(lastDateStr)) / (1000 * 60 * 60 * 24)
-      );
-      if (diffDays > 1) {
-        // Streak broken — reset
-        await pool.query(
-          `UPDATE user_streaks SET current_streak = 0, updated_at = NOW() WHERE user_id = $1`,
-          [req.user.id]
-        );
-        return res.json({
-          currentStreak:   0,
-          longestStreak:   s.longest_streak,
-          lastAppliedDate: lastDateStr,
-          streakBroken:    true,
-        });
+    let streakBroken = false;
+
+    if (lastCredited && lastCredited !== todayStr) {
+      const gapDays = Math.round((new Date(todayStr) - new Date(lastCredited)) / 86400000);
+      if (gapDays > 1 && lastHighUVStr) {
+        // Check if last_high_uv_date falls in the gap
+        const lastHighDate    = new Date(lastHighUVStr);
+        const lastCreditDate  = new Date(lastCredited);
+        if (lastHighDate > lastCreditDate && lastHighUVStr !== todayStr) {
+          // High UV day was missed — reset streak
+          await pool.query(
+            `UPDATE user_streaks SET current_streak = 0, updated_at = NOW() WHERE user_id = $1`,
+            [req.user.id]
+          );
+          streakBroken = true;
+          return res.json({
+            currentStreak:  0,
+            longestStreak:  s.longest_streak,
+            lastCreditedDate: lastCredited,
+            lastHighUVDate:   lastHighUVStr,
+            streakBroken:   true,
+          });
+        }
       }
     }
 
     res.json({
       currentStreak:   s.current_streak,
       longestStreak:   s.longest_streak,
-      lastAppliedDate: lastDateStr,
-      streakBroken:    false,
+      lastCreditedDate: lastCredited,
+      lastHighUVDate:   lastHighUVStr,
+      streakBroken,
     });
   } catch (err) {
     console.error('[getStreak]', err.message);

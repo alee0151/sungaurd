@@ -1,4 +1,5 @@
 const rules = require('../data/recommendationRules');
+const pool  = require('../db');
 
 exports.getRecommendation = (req, res) => {
   const uvLevel = parseFloat(req.query.uvLevel);
@@ -9,106 +10,79 @@ exports.getRecommendation = (req, res) => {
 };
 
 // ---------------------------------------------------------------------------
-// GET /uv/historical?lat=<lat>&lon=<lon>&years=4
+// GET /uv/daily-history?view=monthly|yearly&years=4
 //
-// Fetches daily UV index max from Open-Meteo Historical Climate API
-// (free, no API key required) and returns two aggregated structures:
+// Reads from the `daily_max_uv` table (columns: id, date, max_uv_index)
+// and returns aggregated UV data.
 //
-//   monthly: [{ month: "Jan", "2021": 11.2, "2022": 11.5, ... }, ...]  (12 rows)
-//   yearly:  [{ year: "2021", avgUv: 7.1 }, ...]                         (N rows)
+// view=monthly  -> 12 rows, one per month, averaged across all years
+//                  [{ month: "Jan", avgUv: 11.2, year_2021: 11.0, year_2022: 11.4, ... }]
+// view=yearly   -> N rows, one per calendar year
+//                  [{ year: "2021", avgUv: 7.1, minUv: 2.1, maxUv: 13.0 }]
 //
-// Falls back to Melbourne defaults if no lat/lon provided.
-// In-memory cache per location keyed by "lat,lon" — expires after 24 hours.
+// Default: view=monthly, years=4 (most recent complete years)
 // ---------------------------------------------------------------------------
-
-const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-const CACHE   = new Map(); // key: "lat,lon" -> { data, fetchedAt }
-const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
-
-async function fetchHistoricalFromOpenMeteo(lat, lon, years) {
-  const endYear   = new Date().getFullYear() - 1; // last complete year
-  const startYear = endYear - years + 1;
-
-  const url = new URL('https://archive-api.open-meteo.com/v1/archive');
-  url.searchParams.set('latitude',        lat);
-  url.searchParams.set('longitude',       lon);
-  url.searchParams.set('start_date',      `${startYear}-01-01`);
-  url.searchParams.set('end_date',        `${endYear}-12-31`);
-  url.searchParams.set('daily',           'uv_index_max');
-  url.searchParams.set('timezone',        'auto');
-  url.searchParams.set('timeformat',      'iso8601');
-
-  const resp = await fetch(url.toString());
-  if (!resp.ok) throw new Error(`Open-Meteo error: ${resp.status}`);
-  return resp.json();
-}
-
-function aggregateOpenMeteoResponse(json) {
-  const dates  = json.daily.time;          // ["2021-01-01", ...]
-  const values = json.daily.uv_index_max;  // [11.2, ...]
-
-  // Group by year+month
-  // buckets[year][monthIndex] = [uvValues...]
-  const buckets = {};
-  dates.forEach((dateStr, i) => {
-    const uv = values[i];
-    if (uv === null || uv === undefined) return;
-    const [yearStr, monthStr] = dateStr.split('-');
-    const year  = yearStr;
-    const month = parseInt(monthStr, 10) - 1; // 0-indexed
-    if (!buckets[year]) buckets[year] = Array.from({ length: 12 }, () => []);
-    buckets[year][month].push(uv);
-  });
-
-  const years = Object.keys(buckets).sort();
-
-  // Monthly rows: [{ month: "Jan", "2021": 11.2, ... }, ...]
-  const monthly = MONTHS.map((month, mi) => {
-    const row = { month };
-    years.forEach(yr => {
-      const vals = buckets[yr]?.[mi] || [];
-      row[yr] = vals.length
-        ? parseFloat((vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(1))
-        : null;
-    });
-    return row;
-  });
-
-  // Yearly rows: [{ year: "2021", avgUv: 7.1 }, ...]
-  const yearly = years.map(yr => {
-    const all = Object.values(buckets[yr]).flat();
-    const avg = all.length
-      ? parseFloat((all.reduce((a, b) => a + b, 0) / all.length).toFixed(1))
-      : null;
-    return { year: yr, avgUv: avg };
-  });
-
-  return { monthly, yearly, years };
-}
-
-exports.getHistoricalUV = async (req, res) => {
-  // Default to Melbourne, AU if no coordinates provided
-  const lat   = parseFloat(req.query.lat  ?? '-37.8136');
-  const lon   = parseFloat(req.query.lon  ?? '144.9631');
-  const years = Math.min(parseInt(req.query.years ?? '4', 10), 10);
-
-  if (isNaN(lat) || isNaN(lon)) {
-    return res.status(400).json({ error: 'Invalid lat/lon' });
-  }
-
-  const cacheKey = `${lat.toFixed(3)},${lon.toFixed(3)},${years}`;
-  const cached   = CACHE.get(cacheKey);
-  if (cached && Date.now() - cached.fetchedAt < CACHE_TTL_MS) {
-    return res.json({ ...cached.data, cached: true });
-  }
+exports.getDailyHistory = async (req, res) => {
+  const view  = req.query.view  || 'monthly';
+  const years = Math.min(parseInt(req.query.years || '4', 10), 10);
 
   try {
-    const raw  = await fetchHistoricalFromOpenMeteo(lat, lon, years);
-    const data = aggregateOpenMeteoResponse(raw);
-    CACHE.set(cacheKey, { data, fetchedAt: Date.now() });
-    res.json({ ...data, cached: false });
+    if (view === 'yearly') {
+      // Annual average / min / max from daily_max_uv
+      const result = await pool.query(`
+        SELECT
+          EXTRACT(YEAR FROM date)::int   AS year,
+          ROUND(AVG(max_uv_index)::numeric, 1) AS "avgUv",
+          ROUND(MIN(max_uv_index)::numeric, 1) AS "minUv",
+          ROUND(MAX(max_uv_index)::numeric, 1) AS "maxUv"
+        FROM daily_max_uv
+        WHERE date >= NOW() - INTERVAL '1 year' * $1
+        GROUP BY year
+        ORDER BY year ASC
+      `, [years]);
+
+      return res.json({
+        view: 'yearly',
+        data: result.rows.map(r => ({ ...r, year: String(r.year) })),
+      });
+    }
+
+    // Monthly view — average per calendar month across all years in range
+    const monthlyResult = await pool.query(`
+      SELECT
+        EXTRACT(MONTH FROM date)::int              AS month_num,
+        TO_CHAR(date, 'Mon')                       AS month,
+        EXTRACT(YEAR  FROM date)::int              AS year,
+        ROUND(AVG(max_uv_index)::numeric, 1)       AS avg_uv
+      FROM daily_max_uv
+      WHERE date >= NOW() - INTERVAL '1 year' * $1
+      GROUP BY month_num, month, year
+      ORDER BY year ASC, month_num ASC
+    `, [years]);
+
+    // Pivot: build [{ month: "Jan", month_num: 1, "2021": 11.2, "2022": 11.5 ... }, ...]
+    const MONTH_ORDER = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const pivoted: Record<string, any> = {};
+    const yearSet = new Set<string>();
+
+    for (const row of monthlyResult.rows) {
+      const key = row.month;
+      if (!pivoted[key]) pivoted[key] = { month: key, month_num: row.month_num };
+      pivoted[key][String(row.year)] = parseFloat(row.avg_uv);
+      yearSet.add(String(row.year));
+    }
+
+    const data = MONTH_ORDER
+      .filter(m => pivoted[m])
+      .map(m => pivoted[m]);
+
+    return res.json({
+      view: 'monthly',
+      years: Array.from(yearSet).sort(),
+      data,
+    });
   } catch (err) {
-    console.error('[getHistoricalUV]', err.message);
-    res.status(502).json({ error: 'Failed to fetch historical UV data', detail: err.message });
+    console.error('[getDailyHistory]', err.message);
+    res.status(500).json({ error: 'Failed to query daily_max_uv', detail: err.message });
   }
 };

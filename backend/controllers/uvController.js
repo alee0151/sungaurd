@@ -11,16 +11,6 @@ exports.getRecommendation = (req, res) => {
 
 // ---------------------------------------------------------------------------
 // GET /uv/daily-history?view=monthly|yearly&years=4
-//
-// Reads from the `daily_max_uv` table (columns: id, date, max_uv_index)
-// and returns aggregated UV data.
-//
-// view=monthly  -> 12 rows, one per month, averaged across all years
-//                  [{ month: "Jan", avgUv: 11.2, year_2021: 11.0, year_2022: 11.4, ... }]
-// view=yearly   -> N rows, one per calendar year
-//                  [{ year: "2021", avgUv: 7.1, minUv: 2.1, maxUv: 13.0 }]
-//
-// Default: view=monthly, years=4 (most recent complete years)
 // ---------------------------------------------------------------------------
 exports.getDailyHistory = async (req, res) => {
   const view  = req.query.view  || 'monthly';
@@ -28,13 +18,12 @@ exports.getDailyHistory = async (req, res) => {
 
   try {
     if (view === 'yearly') {
-      // Annual average / min / max from daily_max_uv
       const result = await pool.query(`
         SELECT
-          EXTRACT(YEAR FROM date)::int   AS year,
-          ROUND(AVG(max_uv_index)::numeric, 1) AS "avgUv",
-          ROUND(MIN(max_uv_index)::numeric, 1) AS "minUv",
-          ROUND(MAX(max_uv_index)::numeric, 1) AS "maxUv"
+          EXTRACT(YEAR FROM date)::int                 AS year,
+          ROUND(AVG(max_uv_index)::numeric, 1)         AS "avgUv",
+          ROUND(MIN(max_uv_index)::numeric, 1)         AS "minUv",
+          ROUND(MAX(max_uv_index)::numeric, 1)         AS "maxUv"
         FROM daily_max_uv
         WHERE date >= NOW() - INTERVAL '1 year' * $1
         GROUP BY year
@@ -47,23 +36,21 @@ exports.getDailyHistory = async (req, res) => {
       });
     }
 
-    // Monthly view — average per calendar month across all years in range
     const monthlyResult = await pool.query(`
       SELECT
-        EXTRACT(MONTH FROM date)::int              AS month_num,
-        TO_CHAR(date, 'Mon')                       AS month,
-        EXTRACT(YEAR  FROM date)::int              AS year,
-        ROUND(AVG(max_uv_index)::numeric, 1)       AS avg_uv
+        EXTRACT(MONTH FROM date)::int        AS month_num,
+        TO_CHAR(date, 'Mon')                 AS month,
+        EXTRACT(YEAR  FROM date)::int        AS year,
+        ROUND(AVG(max_uv_index)::numeric, 1) AS avg_uv
       FROM daily_max_uv
       WHERE date >= NOW() - INTERVAL '1 year' * $1
       GROUP BY month_num, month, year
       ORDER BY year ASC, month_num ASC
     `, [years]);
 
-    // Pivot: build [{ month: "Jan", month_num: 1, "2021": 11.2, "2022": 11.5 ... }, ...]
     const MONTH_ORDER = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-    const pivoted: Record<string, any> = {};
-    const yearSet = new Set<string>();
+    const pivoted = {};
+    const yearSet = new Set();
 
     for (const row of monthlyResult.rows) {
       const key = row.month;
@@ -72,9 +59,7 @@ exports.getDailyHistory = async (req, res) => {
       yearSet.add(String(row.year));
     }
 
-    const data = MONTH_ORDER
-      .filter(m => pivoted[m])
-      .map(m => pivoted[m]);
+    const data = MONTH_ORDER.filter(m => pivoted[m]).map(m => pivoted[m]);
 
     return res.json({
       view: 'monthly',
@@ -84,5 +69,42 @@ exports.getDailyHistory = async (req, res) => {
   } catch (err) {
     console.error('[getDailyHistory]', err.message);
     res.status(500).json({ error: 'Failed to query daily_max_uv', detail: err.message });
+  }
+};
+
+// ---------------------------------------------------------------------------
+// GET /education/melanoma-cases
+//
+// Returns annual national melanoma incidence (Persons, Australia) from the
+// melanoma_cases table for the last 12 years up to and including 2019.
+//
+// Expected table schema:
+//   melanoma_cases(id, data_type, cancer_group, year, sex, state_territory, count, ...)
+// ---------------------------------------------------------------------------
+exports.getMelanomaCases = async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT
+        year::int         AS year,
+        SUM(count)::int   AS cases
+      FROM melanoma_cases
+      WHERE
+        data_type      = 'Incidence'
+        AND sex        = 'Persons'
+        AND state_territory = 'Australia'
+        AND year::int  <= 2019
+        AND count      IS NOT NULL
+      GROUP BY year
+      ORDER BY year ASC
+      LIMIT 12
+    `);
+
+    // Return most-recent 12 years up to 2019
+    const rows = result.rows;
+    const data = rows.slice(-12).map(r => ({ year: String(r.year), cases: r.cases }));
+    res.json({ data });
+  } catch (err) {
+    console.error('[getMelanomaCases]', err.message);
+    res.status(500).json({ error: 'Failed to query melanoma_cases', detail: err.message });
   }
 };

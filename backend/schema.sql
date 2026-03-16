@@ -1,5 +1,5 @@
 -- SunGuard database schema
--- All statements use IF NOT EXISTS / ADD COLUMN IF NOT EXISTS — safe to re-run.
+-- Safe to re-run: uses IF NOT EXISTS / ADD COLUMN IF NOT EXISTS
 
 CREATE TABLE IF NOT EXISTS users (
   id           SERIAL PRIMARY KEY,
@@ -13,9 +13,27 @@ CREATE TABLE IF NOT EXISTS users (
   created_at   TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Add columns if upgrading an existing database
 ALTER TABLE users ADD COLUMN IF NOT EXISTS nickname  VARCHAR(100);
 ALTER TABLE users ADD COLUMN IF NOT EXISTS onboarded BOOLEAN DEFAULT FALSE;
+
+-- Protection activity logs (sunscreen applications + alerts)
+CREATE TABLE IF NOT EXISTS protection_logs (
+  id               SERIAL PRIMARY KEY,
+  user_id          INTEGER REFERENCES users(id) ON DELETE CASCADE,
+  type             VARCHAR(20) NOT NULL CHECK (type IN ('Application', 'Alert')),
+  message          VARCHAR(255) NOT NULL,
+  duration_seconds INTEGER,                    -- how long protection lasts
+  logged_at        TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- One row per user — stores streak counters and last application date
+CREATE TABLE IF NOT EXISTS user_streaks (
+  user_id          INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  current_streak   INTEGER NOT NULL DEFAULT 0,
+  longest_streak   INTEGER NOT NULL DEFAULT 0,
+  last_applied_date DATE,                      -- date of most recent Application log
+  updated_at       TIMESTAMPTZ DEFAULT NOW()
+);
 
 CREATE TABLE IF NOT EXISTS reminders (
   id           SERIAL PRIMARY KEY,

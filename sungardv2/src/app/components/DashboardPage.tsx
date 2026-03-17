@@ -39,14 +39,31 @@ function getForecastGradientColor(maxUV: number): string {
   return "#9810FA";
 }
 
+/** One-line human description for each risk level */
+function getRiskDescription(uv: number): string {
+  if (uv <= 2)  return "Safe to be outside — no protection needed.";
+  if (uv <= 5)  return "Some risk — apply SPF 50+ before heading out.";
+  if (uv <= 7)  return "High risk — sunscreen, hat & shade are essential.";
+  if (uv <= 10) return "Very high risk — limit time outdoors, cover up.";
+  return "Extreme risk — avoid the sun where possible.";
+}
+
+/** One-line human description for peak hours */
+function getPeakHoursDescription(peakHours: string): string {
+  if (peakHours === "No peak hours today") {
+    return "UV stays low all day — no high-risk window today.";
+  }
+  return `UV ≥ 6 during this window — stay in the shade and reapply SPF.`;
+}
+
 type SunscreenRecommendation = { riskLevel: string; spfLevel: string; advice: string };
 
 function getFallbackRecommendation(uv: number): SunscreenRecommendation {
-  if (uv <= 2)  return { riskLevel: "Low",       spfLevel: "No sunscreen required", advice: "UV index is low \u2014 sun protection is generally not needed. You can enjoy time outdoors without sunscreen, though a hat is still a good habit." };
+  if (uv <= 2)  return { riskLevel: "Low",       spfLevel: "No sunscreen required", advice: "UV index is low — sun protection is generally not needed. You can enjoy time outdoors without sunscreen, though a hat is still a good habit." };
   if (uv <= 5)  return { riskLevel: "Moderate",  spfLevel: "SPF 50+", advice: "Apply SPF 50+ sunscreen 20 minutes before going outside and reapply every 2 hours. Wear a broad-brimmed hat and UV-protective sunglasses." };
   if (uv <= 7)  return { riskLevel: "High",      spfLevel: "SPF 50+", advice: "SPF 50+ is essential. Apply generously 20 minutes before sun exposure and reapply every 2 hours or after swimming/sweating. Seek shade during peak hours and cover up with sun-protective clothing." };
   if (uv <= 10) return { riskLevel: "Very High", spfLevel: "SPF 50+", advice: "Maximum protection required. Apply SPF 50+ liberally, wear long sleeves, a broad-brimmed hat, and UV-wrap sunglasses. Minimise time outdoors between 10 am and 3 pm and reapply sunscreen every 2 hours." };
-  return         { riskLevel: "Extreme",  spfLevel: "SPF 50+", advice: "Extreme UV \u2014 avoid outdoor exposure where possible. If you must go outside, apply SPF 50+ to all exposed skin, wear full-coverage sun-protective clothing, a broad-brimmed hat, and UV-wrap sunglasses. Reapply sunscreen every 2 hours." };
+  return         { riskLevel: "Extreme",  spfLevel: "SPF 50+", advice: "Extreme UV — avoid outdoor exposure where possible. If you must go outside, apply SPF 50+ to all exposed skin, wear full-coverage sun-protective clothing, a broad-brimmed hat, and UV-wrap sunglasses. Reapply sunscreen every 2 hours." };
 }
 
 function formatFetchTime(date: Date): string {
@@ -103,9 +120,8 @@ export default function DashboardPage() {
   const [recSource, setRecSource]       = useState<"backend" | "fallback" | "loading">("loading");
   const [fetchedAt, setFetchedAt]       = useState<Date | null>(null);
 
-  // Location button state
-  const [locating, setLocating]   = useState(false);
-  const [locError, setLocError]   = useState<string | null>(null);
+  const [locating, setLocating] = useState(false);
+  const [locError, setLocError] = useState<string | null>(null);
 
   useEffect(() => { if (!uvLoading) setFetchedAt(new Date()); }, [uvLoading, currentUV]);
 
@@ -123,10 +139,6 @@ export default function DashboardPage() {
     fetchRecommendation();
   }, [currentUV]);
 
-  // -----------------------------------------------------------------------
-  // Use My Location handler
-  // Fetches GPS coords → reverse geocode → UV + forecast → updates dashboard
-  // -----------------------------------------------------------------------
   const handleUseMyLocation = useCallback(() => {
     if (!navigator.geolocation) {
       setLocError("Geolocation is not supported by your browser.");
@@ -139,47 +151,18 @@ export default function DashboardPage() {
       async (pos) => {
         try {
           const { latitude: lat, longitude: lon } = pos.coords;
-
-          // Check cache first
           const cached = readUVCache(lat, lon);
           if (cached && cached.hourlyForecast.length > 0) {
             const ageMin = cacheAgeMinutes(cached);
-            setUVDataOverrides({
-              uv: cached.uv,
-              locationName: cached.locationName,
-              hourlyForecast: cached.hourlyForecast,
-              fromCache: true,
-              cacheAgeMinutes: ageMin,
-            });
+            setUVDataOverrides({ uv: cached.uv, locationName: cached.locationName, hourlyForecast: cached.hourlyForecast, fromCache: true, cacheAgeMinutes: ageMin });
             setFetchedAt(new Date());
             setLocating(false);
             return;
           }
-
-          // Cache miss — fetch live
-          const [uvResult, locName] = await Promise.all([
-            fetchFullUV(lat, lon),
-            reverseGeocodeLocation(lat, lon),
-          ]);
-
-          // Write to cache
-          const entry: UVCacheEntry = {
-            uv: uvResult.uv,
-            hourlyForecast: uvResult.hourlyForecast,
-            locationName: locName,
-            lat,
-            lon,
-            fetchedAt: Date.now(),
-          };
+          const [uvResult, locName] = await Promise.all([fetchFullUV(lat, lon), reverseGeocodeLocation(lat, lon)]);
+          const entry: UVCacheEntry = { uv: uvResult.uv, hourlyForecast: uvResult.hourlyForecast, locationName: locName, lat, lon, fetchedAt: Date.now() };
           writeUVCache(entry);
-
-          setUVDataOverrides({
-            uv: uvResult.uv,
-            locationName: locName,
-            hourlyForecast: uvResult.hourlyForecast,
-            fromCache: false,
-            cacheAgeMinutes: 0,
-          });
+          setUVDataOverrides({ uv: uvResult.uv, locationName: locName, hourlyForecast: uvResult.hourlyForecast, fromCache: false, cacheAgeMinutes: 0 });
           setFetchedAt(new Date());
         } catch (err) {
           console.error("[DashboardPage] location fetch error", err);
@@ -225,6 +208,14 @@ export default function DashboardPage() {
     currentUV <= 10 ? { bg: "bg-[#fff1f2]", border: "border-[#fca5a5]", iconColor: "text-[#FB2C36]" } :
                       { bg: "bg-[#faf5ff]", border: "border-[#c084fc]", iconColor: "text-[#9810FA]" };
 
+  // Colour for Risk Level card accent
+  const riskDescColor =
+    currentUV <= 2  ? "text-[#16a34a]" :
+    currentUV <= 5  ? "text-[#ca8a04]" :
+    currentUV <= 7  ? "text-[#ea580c]" :
+    currentUV <= 10 ? "text-[#dc2626]" :
+                      "text-[#7c3aed]";
+
   return (
     <div className="flex flex-col gap-6">
 
@@ -242,7 +233,7 @@ export default function DashboardPage() {
         <div className="bg-[#fefce8] border border-[#fde68a] rounded-xl px-5 py-3 flex items-center gap-3">
           <Sun size={16} className="text-[#F0B100] shrink-0" />
           <p className="text-[#713f12] text-[13px]">
-            UV is {currentUV} \u2014 sunscreen is required from UV 3 and above. Apply <strong>SPF 50+</strong> before heading out.
+            UV is {currentUV} — sunscreen is required from UV 3 and above. Apply <strong>SPF 50+</strong> before heading out.
           </p>
         </div>
       )}
@@ -252,15 +243,12 @@ export default function DashboardPage() {
 
         {/* Current UV card */}
         <div className="bg-white rounded-2xl border border-black/10 p-6">
-
-          {/* Card header */}
           <div className="flex items-start justify-between">
             <div>
               <h3 className="text-[#0a0a0a] text-[16px]" style={{ fontWeight: 500 }}>Current UV Index</h3>
               <p className="text-[#717182] text-[14px] mt-0.5">Real-time UV radiation level</p>
             </div>
             <div className="flex items-center gap-2">
-              {/* ── Use My Location button ── */}
               <button
                 onClick={handleUseMyLocation}
                 disabled={locating}
@@ -271,8 +259,6 @@ export default function DashboardPage() {
                 <LocateFixed size={13} className={locating ? "animate-pulse text-[#F54900]" : ""} />
                 {locating ? "Locating..." : "Use My Location"}
               </button>
-
-              {/* Live / Cached badge */}
               {!uvLoading && (
                 <span className={`flex items-center gap-1 text-[11px] px-2 py-1 rounded-lg border ${
                   uvFromCache
@@ -288,7 +274,6 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          {/* Location error */}
           {locError && (
             <p className="mt-2 text-[12px] text-red-500 flex items-center gap-1">
               <AlertTriangle size={12} /> {locError}
@@ -307,12 +292,8 @@ export default function DashboardPage() {
           ) : (
             <div className="flex items-start justify-between mt-5">
               <div>
-                {/* Big UV number + badge */}
                 <div className="flex items-end gap-2">
-                  <span
-                    className="text-[#101828] text-[60px]"
-                    style={{ fontWeight: 700, lineHeight: 1 }}
-                  >
+                  <span className="text-[#101828] text-[60px]" style={{ fontWeight: 700, lineHeight: 1 }}>
                     {currentUV}
                   </span>
                   <div className="mb-2">
@@ -325,8 +306,6 @@ export default function DashboardPage() {
                     <p className="text-[#4a5565] text-[14px] mt-1">{getUVRange(currentUV)}</p>
                   </div>
                 </div>
-
-                {/* Location — directly under UV number */}
                 <div className="flex items-center gap-1.5 mt-2">
                   <MapPin size={13} className="text-[#F54900] shrink-0" />
                   <span className="text-[#4a5565] text-[13px] font-medium">{locationName}</span>
@@ -337,18 +316,14 @@ export default function DashboardPage() {
                     </span>
                   )}
                 </div>
-
-                {/* Advice text */}
                 <p className="text-[#4a5565] text-[14px] mt-3">
                   {currentUV <= 2
-                    ? "UV is low \u2014 no sun protection needed right now."
+                    ? "UV is low — no sun protection needed right now."
                     : currentUV <= 5
                     ? "Sunscreen required. Apply SPF 50+ before going outside."
-                    : "High UV \u2014 SPF 50+ essential. Seek shade during peak hours."}
+                    : "High UV — SPF 50+ essential. Seek shade during peak hours."}
                 </p>
               </div>
-
-              {/* UV risk scale */}
               <div className="flex flex-col gap-2">
                 <p className="text-[#364153] text-[12px]" style={{ fontWeight: 600 }}>UV Risk Scale</p>
                 {uvScale.map(item => (
@@ -362,29 +337,75 @@ export default function DashboardPage() {
           )}
         </div>
 
+        {/* Risk Level card */}
         <div className="bg-white rounded-2xl border border-black/10 p-6 flex flex-col">
           <div className="flex items-center gap-2">
             <Shield size={18} className="text-[#155dfc]" />
             <h3 className="text-[#0a0a0a] text-[16px]" style={{ fontWeight: 500 }}>Risk Level</h3>
           </div>
-          <div className="mt-6">
-            {uvLoading
-              ? <div className="h-8 w-24 bg-gray-100 rounded-lg animate-pulse" />
-              : <p className="text-[#101828] text-[30px]" style={{ fontWeight: 700 }}>{riskLevel}</p>}
-            <p className="text-[#4a5565] text-[14px] mt-1">Current exposure risk</p>
+          <div className="mt-5 flex-1 flex flex-col justify-between">
+            {uvLoading ? (
+              <div className="h-8 w-24 bg-gray-100 rounded-lg animate-pulse" />
+            ) : (
+              <>
+                {/* Risk label in its own colour */}
+                <p className={`text-[30px] font-extrabold leading-tight ${riskDescColor}`}>
+                  {riskLevel}
+                </p>
+                {/* One-line description */}
+                <p className="text-[#4a5565] text-[13px] mt-2 leading-snug">
+                  {getRiskDescription(currentUV)}
+                </p>
+                {/* What it means pill */}
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {[
+                    currentUV <= 2  && { label: "No SPF needed",      bg: "bg-green-50",  text: "text-green-700",  border: "border-green-200" },
+                    currentUV >= 3 && currentUV <= 5  && { label: "SPF 50+ advised",   bg: "bg-yellow-50", text: "text-yellow-700", border: "border-yellow-200" },
+                    currentUV >= 6 && currentUV <= 7  && { label: "SPF 50+ required",  bg: "bg-orange-50", text: "text-orange-700", border: "border-orange-200" },
+                    currentUV >= 8 && currentUV <= 10 && { label: "Max protection",    bg: "bg-red-50",    text: "text-red-700",    border: "border-red-200"    },
+                    currentUV >= 11 && { label: "Stay indoors",        bg: "bg-purple-50", text: "text-purple-700", border: "border-purple-200" },
+                  ].filter(Boolean).map((pill: any) => (
+                    <span key={pill.label} className={`text-[11px] font-semibold px-2.5 py-1 rounded-full border ${pill.bg} ${pill.text} ${pill.border}`}>
+                      {pill.label}
+                    </span>
+                  ))}
+                </div>
+              </>
+            )}
           </div>
         </div>
 
+        {/* Peak Hours card */}
         <div className="bg-white rounded-2xl border border-black/10 p-6 flex flex-col">
           <div className="flex items-center gap-2">
             <Clock size={18} className="text-[#9810fa]" />
             <h3 className="text-[#0a0a0a] text-[16px]" style={{ fontWeight: 500 }}>Peak Hours</h3>
           </div>
-          <div className="mt-6">
-            {uvLoading
-              ? <div className="h-8 w-28 bg-gray-100 rounded-lg animate-pulse" />
-              : <p className="text-[#101828] text-[24px]" style={{ fontWeight: 700 }}>{peakHours}</p>}
-            <p className="text-[#4a5565] text-[14px] mt-1">Seek shade during this time</p>
+          <div className="mt-5 flex-1 flex flex-col justify-between">
+            {uvLoading ? (
+              <div className="h-8 w-28 bg-gray-100 rounded-lg animate-pulse" />
+            ) : (
+              <>
+                {/* Time range */}
+                <p className="text-[#101828] text-[24px] font-extrabold leading-tight">{peakHours}</p>
+                {/* One-line description */}
+                <p className="text-[#4a5565] text-[13px] mt-2 leading-snug">
+                  {getPeakHoursDescription(peakHours)}
+                </p>
+                {/* Action chip */}
+                <div className="mt-4">
+                  {peakHours === "No peak hours today" ? (
+                    <span className="text-[11px] font-semibold px-2.5 py-1 rounded-full border bg-green-50 text-green-700 border-green-200">
+                      ✓ Safe all day
+                    </span>
+                  ) : (
+                    <span className="text-[11px] font-semibold px-2.5 py-1 rounded-full border bg-orange-50 text-orange-700 border-orange-200">
+                      ⚠️ Seek shade &amp; reapply SPF
+                    </span>
+                  )}
+                </div>
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -403,7 +424,7 @@ export default function DashboardPage() {
             </div>
           )}
         </div>
-        <p className="text-[#717182] text-[14px] mb-6">Plan your outdoor activities safely \u2014 SPF 50+ required when UV reaches 3</p>
+        <p className="text-[#717182] text-[14px] mb-6">Plan your outdoor activities safely — SPF 50+ required when UV reaches 3</p>
         {uvLoading ? (
           <div className="h-[300px] flex items-center justify-center">
             <div className="flex flex-col items-center gap-2">
@@ -469,7 +490,7 @@ export default function DashboardPage() {
         <div className="flex items-center justify-between">
           <div>
             <h3 className="text-[#0a0a0a] text-[16px]" style={{ fontWeight: 500 }}>Sunscreen Recommendation</h3>
-            <p className="text-[#717182] text-[14px] mt-1">Based on current UV index \u2014 SPF 50+ is required at UV 3 and above</p>
+            <p className="text-[#717182] text-[14px] mt-1">Based on current UV index — SPF 50+ is required at UV 3 and above</p>
           </div>
           {recSource === "fallback" && (
             <span className="text-[11px] text-[#6a7282] bg-gray-100 px-2 py-1 rounded-lg border border-black/5">Built-in data</span>
@@ -481,8 +502,8 @@ export default function DashboardPage() {
             <p className="text-[#101828] text-[14px]" style={{ fontWeight: 600 }}>
               {sunscreenRec
                 ? currentUV <= 2
-                  ? "No sunscreen required at UV 0\u20132."
-                  : `${sunscreenRec.spfLevel} required \u2014 UV is currently ${currentUV} (${riskLevel}).`
+                  ? "No sunscreen required at UV 0–2."
+                  : `${sunscreenRec.spfLevel} required — UV is currently ${currentUV} (${riskLevel}).`
                 : "Loading recommendation..."}
             </p>
             <p className="text-[#4a5565] text-[14px] mt-1">
@@ -498,7 +519,7 @@ export default function DashboardPage() {
                   currentUV >= 8 ? "Wear long sleeves and sun-protective clothing" : null,
                 ].filter(Boolean).map(tip => (
                   <li key={tip} className="flex items-start gap-2 text-[13px] text-[#4a5565]">
-                    <span className="text-[#FF6900] mt-0.5">\u2713</span>
+                    <span className="text-[#FF6900] mt-0.5">✓</span>
                     {tip}
                   </li>
                 ))}

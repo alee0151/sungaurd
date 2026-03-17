@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router";
-import { Sun, Shield, Activity, Bell, ChevronRight, Zap, LogOut, User, MapPin, Smile } from "lucide-react";
+import { Sun, Shield, Activity, Bell, ChevronRight, Zap, User, MapPin, Smile } from "lucide-react";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
 
 export default function LandingPage() {
@@ -65,7 +65,6 @@ export default function LandingPage() {
                   onClick={handleLogout}
                   className="flex items-center gap-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 px-3 py-2 rounded-full text-[13px] font-semibold transition-colors cursor-pointer"
                 >
-                  <LogOut size={14} />
                   <span className="hidden sm:inline">Log out</span>
                 </button>
               </>
@@ -130,21 +129,13 @@ export default function LandingPage() {
 
                 <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
                   {isLoggedIn ? (
-                    <>
-                      <Link
-                        to="/dashboard"
-                        className="flex items-center justify-center gap-2 text-white px-8 py-4 rounded-2xl text-[17px] font-bold transition-all hover:scale-[1.03] shadow-lg"
-                        style={{ backgroundImage: "linear-gradient(135deg, #FF6900, #f63b9a)" }}
-                      >
-                        <Zap size={20} /> Check my UV now
-                      </Link>
-                      <button
-                        onClick={handleLogout}
-                        className="flex items-center justify-center gap-2 px-6 py-4 rounded-2xl text-[16px] font-semibold text-gray-500 hover:bg-gray-100 transition-colors cursor-pointer border border-gray-200"
-                      >
-                        <LogOut size={18} /> Log out
-                      </button>
-                    </>
+                    <Link
+                      to="/dashboard"
+                      className="flex items-center justify-center gap-2 text-white px-8 py-4 rounded-2xl text-[17px] font-bold transition-all hover:scale-[1.03] shadow-lg"
+                      style={{ backgroundImage: "linear-gradient(135deg, #FF6900, #f63b9a)" }}
+                    >
+                      <Zap size={20} /> Check my UV now
+                    </Link>
                   ) : (
                     <>
                       <Link

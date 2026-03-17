@@ -1,4 +1,4 @@
-import { AlertTriangle, Shield, Clock, TrendingUp, Sun, MapPin, RefreshCw, Zap } from "lucide-react";
+import { AlertTriangle, Shield, Clock, TrendingUp, Sun, MapPin, RefreshCw, Zap, LocateFixed } from "lucide-react";
 import {
   AreaChart, Area,
   XAxis, YAxis, CartesianGrid, Tooltip,
@@ -6,8 +6,14 @@ import {
 } from "recharts";
 import { useAppContext } from "./Layout";
 import { UVMap } from "./UVMap";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import type { CSSProperties } from "react";
+import {
+  readUVCache,
+  writeUVCache,
+  cacheAgeMinutes,
+  type UVCacheEntry,
+} from "../utils/uvCache";
 
 const uvScale = [
   { label: "Low (0-2)",        color: "#00C950" },
@@ -36,10 +42,10 @@ function getForecastGradientColor(maxUV: number): string {
 type SunscreenRecommendation = { riskLevel: string; spfLevel: string; advice: string };
 
 function getFallbackRecommendation(uv: number): SunscreenRecommendation {
-  if (uv <= 2)  return { riskLevel: "Low",      spfLevel: "No sunscreen required", advice: "UV index is low \u2014 sun protection is generally not needed. You can enjoy time outdoors without sunscreen, though a hat is still a good habit." };
-  if (uv <= 5)  return { riskLevel: "Moderate", spfLevel: "SPF 50+", advice: "Apply SPF 50+ sunscreen 20 minutes before going outside and reapply every 2 hours. Wear a broad-brimmed hat and UV-protective sunglasses." };
-  if (uv <= 7)  return { riskLevel: "High",     spfLevel: "SPF 50+", advice: "SPF 50+ is essential. Apply generously 20 minutes before sun exposure and reapply every 2 hours or after swimming/sweating. Seek shade during peak hours and cover up with sun-protective clothing." };
-  if (uv <= 10) return { riskLevel: "Very High",spfLevel: "SPF 50+", advice: "Maximum protection required. Apply SPF 50+ liberally, wear long sleeves, a broad-brimmed hat, and UV-wrap sunglasses. Minimise time outdoors between 10 am and 3 pm and reapply sunscreen every 2 hours." };
+  if (uv <= 2)  return { riskLevel: "Low",       spfLevel: "No sunscreen required", advice: "UV index is low \u2014 sun protection is generally not needed. You can enjoy time outdoors without sunscreen, though a hat is still a good habit." };
+  if (uv <= 5)  return { riskLevel: "Moderate",  spfLevel: "SPF 50+", advice: "Apply SPF 50+ sunscreen 20 minutes before going outside and reapply every 2 hours. Wear a broad-brimmed hat and UV-protective sunglasses." };
+  if (uv <= 7)  return { riskLevel: "High",      spfLevel: "SPF 50+", advice: "SPF 50+ is essential. Apply generously 20 minutes before sun exposure and reapply every 2 hours or after swimming/sweating. Seek shade during peak hours and cover up with sun-protective clothing." };
+  if (uv <= 10) return { riskLevel: "Very High", spfLevel: "SPF 50+", advice: "Maximum protection required. Apply SPF 50+ liberally, wear long sleeves, a broad-brimmed hat, and UV-wrap sunglasses. Minimise time outdoors between 10 am and 3 pm and reapply sunscreen every 2 hours." };
   return         { riskLevel: "Extreme",  spfLevel: "SPF 50+", advice: "Extreme UV \u2014 avoid outdoor exposure where possible. If you must go outside, apply SPF 50+ to all exposed skin, wear full-coverage sun-protective clothing, a broad-brimmed hat, and UV-wrap sunglasses. Reapply sunscreen every 2 hours." };
 }
 
@@ -47,7 +53,47 @@ function formatFetchTime(date: Date): string {
   return date.toLocaleTimeString("en-AU", { hour: "2-digit", minute: "2-digit", hour12: true });
 }
 
+const OW_API_KEY = import.meta.env.VITE_OPENWEATHER_API_KEY;
 const backendUrl = import.meta.env.VITE_BACKEND_URL;
+
+async function fetchFullUV(
+  lat: number, lon: number
+): Promise<{ uv: number; hourlyForecast: { time: string; uv: number }[] }> {
+  if (!OW_API_KEY) return { uv: 0, hourlyForecast: [] };
+  const res = await fetch(
+    `https://api.openweathermap.org/data/3.0/onecall?lat=${lat}&lon=${lon}&exclude=minutely,daily,alerts&appid=${OW_API_KEY}&units=metric`
+  );
+  if (!res.ok) throw new Error(`OW API ${res.status}`);
+  const data = await res.json();
+  const uv = Math.round((data.current?.uvi ?? 0) * 10) / 10;
+  const currentHour = new Date().getHours();
+  const hourlyForecast = (data.hourly as any[])
+    .slice(0, 12)
+    .map((h: any, i: number) => ({
+      time: `${String((currentHour + i) % 24).padStart(2, "0")}:00`,
+      uv: Math.round((h.uvi ?? 0) * 10) / 10,
+    }));
+  return { uv, hourlyForecast };
+}
+
+async function reverseGeocodeLocation(lat: number, lon: number): Promise<string> {
+  try {
+    const res = await fetch(
+      `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json`,
+      { headers: { "Accept-Language": "en" } }
+    );
+    const data = await res.json();
+    if (data?.address) {
+      const a = data.address;
+      return [
+        a.suburb || a.neighbourhood || a.residential,
+        a.city || a.town || a.village || a.county,
+        a.state || a.region,
+      ].filter(Boolean).join(", ") || "Your Location";
+    }
+  } catch { /* ignore */ }
+  return "Your Location";
+}
 
 export default function DashboardPage() {
   const { uvData, setUVDataOverrides } = useAppContext();
@@ -56,6 +102,10 @@ export default function DashboardPage() {
   const [sunscreenRec, setSunscreenRec] = useState<SunscreenRecommendation | null>(null);
   const [recSource, setRecSource]       = useState<"backend" | "fallback" | "loading">("loading");
   const [fetchedAt, setFetchedAt]       = useState<Date | null>(null);
+
+  // Location button state
+  const [locating, setLocating]   = useState(false);
+  const [locError, setLocError]   = useState<string | null>(null);
 
   useEffect(() => { if (!uvLoading) setFetchedAt(new Date()); }, [uvLoading, currentUV]);
 
@@ -72,6 +122,80 @@ export default function DashboardPage() {
     }
     fetchRecommendation();
   }, [currentUV]);
+
+  // -----------------------------------------------------------------------
+  // Use My Location handler
+  // Fetches GPS coords → reverse geocode → UV + forecast → updates dashboard
+  // -----------------------------------------------------------------------
+  const handleUseMyLocation = useCallback(() => {
+    if (!navigator.geolocation) {
+      setLocError("Geolocation is not supported by your browser.");
+      return;
+    }
+    setLocating(true);
+    setLocError(null);
+
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        try {
+          const { latitude: lat, longitude: lon } = pos.coords;
+
+          // Check cache first
+          const cached = readUVCache(lat, lon);
+          if (cached && cached.hourlyForecast.length > 0) {
+            const ageMin = cacheAgeMinutes(cached);
+            setUVDataOverrides({
+              uv: cached.uv,
+              locationName: cached.locationName,
+              hourlyForecast: cached.hourlyForecast,
+              fromCache: true,
+              cacheAgeMinutes: ageMin,
+            });
+            setFetchedAt(new Date());
+            setLocating(false);
+            return;
+          }
+
+          // Cache miss — fetch live
+          const [uvResult, locName] = await Promise.all([
+            fetchFullUV(lat, lon),
+            reverseGeocodeLocation(lat, lon),
+          ]);
+
+          // Write to cache
+          const entry: UVCacheEntry = {
+            uv: uvResult.uv,
+            hourlyForecast: uvResult.hourlyForecast,
+            locationName: locName,
+            lat,
+            lon,
+            fetchedAt: Date.now(),
+          };
+          writeUVCache(entry);
+
+          setUVDataOverrides({
+            uv: uvResult.uv,
+            locationName: locName,
+            hourlyForecast: uvResult.hourlyForecast,
+            fromCache: false,
+            cacheAgeMinutes: 0,
+          });
+          setFetchedAt(new Date());
+        } catch (err) {
+          console.error("[DashboardPage] location fetch error", err);
+          setLocError("Failed to fetch UV for your location. Please try again.");
+        } finally {
+          setLocating(false);
+        }
+      },
+      (err) => {
+        console.error("[DashboardPage] geolocation error", err);
+        setLocError("Location access denied. Please enable location permissions.");
+        setLocating(false);
+      },
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  }, [setUVDataOverrides]);
 
   const savedLocation = localStorage.getItem("sunguard_location") || undefined;
 
@@ -128,31 +252,56 @@ export default function DashboardPage() {
 
         {/* Current UV card */}
         <div className="bg-white rounded-2xl border border-black/10 p-6">
-          {/* Card header row */}
+
+          {/* Card header */}
           <div className="flex items-start justify-between">
             <div>
               <h3 className="text-[#0a0a0a] text-[16px]" style={{ fontWeight: 500 }}>Current UV Index</h3>
               <p className="text-[#717182] text-[14px] mt-0.5">Real-time UV radiation level</p>
             </div>
-            {!uvLoading && (
-              <span className={`flex items-center gap-1 text-[11px] px-2 py-1 rounded-lg border ${
-                uvFromCache
-                  ? "bg-amber-50 border-amber-200 text-amber-700"
-                  : "bg-green-50 border-green-200 text-green-700"
-              }`}>
-                {uvFromCache ? <Zap size={11} /> : <RefreshCw size={11} />}
-                {uvFromCache
-                  ? `Cached ${uvCacheAgeMinutes === 0 ? "just now" : `${uvCacheAgeMinutes}min ago`}`
-                  : "Live"}
-              </span>
-            )}
+            <div className="flex items-center gap-2">
+              {/* ── Use My Location button ── */}
+              <button
+                onClick={handleUseMyLocation}
+                disabled={locating}
+                title="Use my current GPS location"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-black/10 text-[12px] text-[#4a5565] hover:text-[#F54900] hover:border-[#F54900] hover:bg-orange-50 transition-colors disabled:opacity-60 cursor-pointer"
+                style={{ fontWeight: 500 }}
+              >
+                <LocateFixed size={13} className={locating ? "animate-pulse text-[#F54900]" : ""} />
+                {locating ? "Locating..." : "Use My Location"}
+              </button>
+
+              {/* Live / Cached badge */}
+              {!uvLoading && (
+                <span className={`flex items-center gap-1 text-[11px] px-2 py-1 rounded-lg border ${
+                  uvFromCache
+                    ? "bg-amber-50 border-amber-200 text-amber-700"
+                    : "bg-green-50 border-green-200 text-green-700"
+                }`}>
+                  {uvFromCache ? <Zap size={11} /> : <RefreshCw size={11} />}
+                  {uvFromCache
+                    ? `Cached ${uvCacheAgeMinutes === 0 ? "just now" : `${uvCacheAgeMinutes}min ago`}`
+                    : "Live"}
+                </span>
+              )}
+            </div>
           </div>
 
-          {uvLoading ? (
-            <div className="flex items-center justify-center h-[100px]">
+          {/* Location error */}
+          {locError && (
+            <p className="mt-2 text-[12px] text-red-500 flex items-center gap-1">
+              <AlertTriangle size={12} /> {locError}
+            </p>
+          )}
+
+          {uvLoading || locating ? (
+            <div className="flex items-center justify-center h-[120px]">
               <div className="flex flex-col items-center gap-2">
                 <div className="w-8 h-8 border-2 border-[#FF6900] border-t-transparent rounded-full animate-spin" />
-                <p className="text-[#717182] text-[13px]">Fetching live UV data...</p>
+                <p className="text-[#717182] text-[13px]">
+                  {locating ? "Getting your location & UV data..." : "Fetching live UV data..."}
+                </p>
               </div>
             </div>
           ) : (
@@ -180,9 +329,7 @@ export default function DashboardPage() {
                 {/* Location — directly under UV number */}
                 <div className="flex items-center gap-1.5 mt-2">
                   <MapPin size={13} className="text-[#F54900] shrink-0" />
-                  <span className="text-[#4a5565] text-[13px] font-medium">
-                    {locationName}
-                  </span>
+                  <span className="text-[#4a5565] text-[13px] font-medium">{locationName}</span>
                   {fetchedAt && (
                     <span className="text-[11px] text-[#9ca3af] ml-1 flex items-center gap-1">
                       <Clock size={11} />

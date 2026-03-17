@@ -10,11 +10,11 @@ import { useEffect, useState } from "react";
 import type { CSSProperties } from "react";
 
 const uvScale = [
-  { label: "Low (0-2)",       color: "#00C950" },
-  { label: "Moderate (3-5)",  color: "#F0B100" },
-  { label: "High (6-7)",      color: "#FF6900" },
-  { label: "Very High (8-10)",color: "#FB2C36" },
-  { label: "Extreme (11+)",   color: "#9810FA" },
+  { label: "Low (0-2)",        color: "#00C950" },
+  { label: "Moderate (3-5)",   color: "#F0B100" },
+  { label: "High (6-7)",       color: "#FF6900" },
+  { label: "Very High (8-10)", color: "#FB2C36" },
+  { label: "Extreme (11+)",    color: "#9810FA" },
 ];
 
 function getUVRange(uv: number) {
@@ -36,10 +36,10 @@ function getForecastGradientColor(maxUV: number): string {
 type SunscreenRecommendation = { riskLevel: string; spfLevel: string; advice: string };
 
 function getFallbackRecommendation(uv: number): SunscreenRecommendation {
-  if (uv <= 2)  return { riskLevel: "Low",       spfLevel: "No sunscreen required", advice: "UV index is low \u2014 sun protection is generally not needed. You can enjoy time outdoors without sunscreen, though a hat is still a good habit." };
-  if (uv <= 5)  return { riskLevel: "Moderate",  spfLevel: "SPF 50+", advice: "Apply SPF 50+ sunscreen 20 minutes before going outside and reapply every 2 hours. Wear a broad-brimmed hat and UV-protective sunglasses." };
-  if (uv <= 7)  return { riskLevel: "High",      spfLevel: "SPF 50+", advice: "SPF 50+ is essential. Apply generously 20 minutes before sun exposure and reapply every 2 hours or after swimming/sweating. Seek shade during peak hours and cover up with sun-protective clothing." };
-  if (uv <= 10) return { riskLevel: "Very High", spfLevel: "SPF 50+", advice: "Maximum protection required. Apply SPF 50+ liberally, wear long sleeves, a broad-brimmed hat, and UV-wrap sunglasses. Minimise time outdoors between 10 am and 3 pm and reapply sunscreen every 2 hours." };
+  if (uv <= 2)  return { riskLevel: "Low",      spfLevel: "No sunscreen required", advice: "UV index is low \u2014 sun protection is generally not needed. You can enjoy time outdoors without sunscreen, though a hat is still a good habit." };
+  if (uv <= 5)  return { riskLevel: "Moderate", spfLevel: "SPF 50+", advice: "Apply SPF 50+ sunscreen 20 minutes before going outside and reapply every 2 hours. Wear a broad-brimmed hat and UV-protective sunglasses." };
+  if (uv <= 7)  return { riskLevel: "High",     spfLevel: "SPF 50+", advice: "SPF 50+ is essential. Apply generously 20 minutes before sun exposure and reapply every 2 hours or after swimming/sweating. Seek shade during peak hours and cover up with sun-protective clothing." };
+  if (uv <= 10) return { riskLevel: "Very High",spfLevel: "SPF 50+", advice: "Maximum protection required. Apply SPF 50+ liberally, wear long sleeves, a broad-brimmed hat, and UV-wrap sunglasses. Minimise time outdoors between 10 am and 3 pm and reapply sunscreen every 2 hours." };
   return         { riskLevel: "Extreme",  spfLevel: "SPF 50+", advice: "Extreme UV \u2014 avoid outdoor exposure where possible. If you must go outside, apply SPF 50+ to all exposed skin, wear full-coverage sun-protective clothing, a broad-brimmed hat, and UV-wrap sunglasses. Reapply sunscreen every 2 hours." };
 }
 
@@ -95,11 +95,11 @@ export default function DashboardPage() {
   };
 
   const recCardStyle =
-    currentUV <= 2  ? { bg: "bg-[#f0fdf4]",  border: "border-[#bbf7d0]", iconColor: "text-[#00C950]" } :
-    currentUV <= 5  ? { bg: "bg-[#fefce8]",  border: "border-[#fde68a]", iconColor: "text-[#F0B100]" } :
-    currentUV <= 7  ? { bg: "bg-[#fff7ed]",  border: "border-[#ff6900]", iconColor: "text-[#FF6900]" } :
-    currentUV <= 10 ? { bg: "bg-[#fff1f2]",  border: "border-[#fca5a5]", iconColor: "text-[#FB2C36]" } :
-                      { bg: "bg-[#faf5ff]",  border: "border-[#c084fc]", iconColor: "text-[#9810FA]" };
+    currentUV <= 2  ? { bg: "bg-[#f0fdf4]", border: "border-[#bbf7d0]", iconColor: "text-[#00C950]" } :
+    currentUV <= 5  ? { bg: "bg-[#fefce8]", border: "border-[#fde68a]", iconColor: "text-[#F0B100]" } :
+    currentUV <= 7  ? { bg: "bg-[#fff7ed]", border: "border-[#ff6900]", iconColor: "text-[#FF6900]" } :
+    currentUV <= 10 ? { bg: "bg-[#fff1f2]", border: "border-[#fca5a5]", iconColor: "text-[#FB2C36]" } :
+                      { bg: "bg-[#faf5ff]", border: "border-[#c084fc]", iconColor: "text-[#9810FA]" };
 
   return (
     <div className="flex flex-col gap-6">
@@ -125,7 +125,10 @@ export default function DashboardPage() {
 
       {/* Top stat cards */}
       <div className="grid grid-cols-1 lg:grid-cols-[2fr_1fr_1fr] gap-6">
+
+        {/* Current UV card */}
         <div className="bg-white rounded-2xl border border-black/10 p-6">
+          {/* Card header row */}
           <div className="flex items-start justify-between">
             <div>
               <h3 className="text-[#0a0a0a] text-[16px]" style={{ fontWeight: 500 }}>Current UV Index</h3>
@@ -133,25 +136,18 @@ export default function DashboardPage() {
             </div>
             {!uvLoading && (
               <span className={`flex items-center gap-1 text-[11px] px-2 py-1 rounded-lg border ${
-                uvFromCache ? "bg-amber-50 border-amber-200 text-amber-700" : "bg-green-50 border-green-200 text-green-700"
+                uvFromCache
+                  ? "bg-amber-50 border-amber-200 text-amber-700"
+                  : "bg-green-50 border-green-200 text-green-700"
               }`}>
                 {uvFromCache ? <Zap size={11} /> : <RefreshCw size={11} />}
-                {uvFromCache ? `Cached ${uvCacheAgeMinutes === 0 ? "just now" : `${uvCacheAgeMinutes}min ago`}` : "Live"}
+                {uvFromCache
+                  ? `Cached ${uvCacheAgeMinutes === 0 ? "just now" : `${uvCacheAgeMinutes}min ago`}`
+                  : "Live"}
               </span>
             )}
           </div>
-          <div className="flex items-center gap-4 mt-3 pb-4 border-b border-black/5">
-            <div className="flex items-center gap-1.5 text-[13px] text-[#4a5565]">
-              <MapPin size={13} className="text-[#F54900] shrink-0" />
-              <span className="font-medium">{uvLoading ? "Detecting location..." : locationName}</span>
-            </div>
-            {fetchedAt && !uvLoading && (
-              <div className="flex items-center gap-1.5 text-[12px] text-[#9ca3af] ml-auto">
-                <Clock size={12} />
-                <span>Fetched {formatFetchTime(fetchedAt)}</span>
-              </div>
-            )}
-          </div>
+
           {uvLoading ? (
             <div className="flex items-center justify-center h-[100px]">
               <div className="flex flex-col items-center gap-2">
@@ -162,20 +158,50 @@ export default function DashboardPage() {
           ) : (
             <div className="flex items-start justify-between mt-5">
               <div>
+                {/* Big UV number + badge */}
                 <div className="flex items-end gap-2">
-                  <span className="text-[#101828] text-[60px]" style={{ fontWeight: 700, lineHeight: 1 }}>{currentUV}</span>
+                  <span
+                    className="text-[#101828] text-[60px]"
+                    style={{ fontWeight: 700, lineHeight: 1 }}
+                  >
+                    {currentUV}
+                  </span>
                   <div className="mb-2">
-                    <span className="bg-[var(--badge-color)] text-white text-[12px] px-2 py-0.5 rounded-lg"
-                      style={{ fontWeight: 500, "--badge-color": riskColor } as CSSProperties}>{riskLevel}</span>
+                    <span
+                      className="bg-[var(--badge-color)] text-white text-[12px] px-2 py-0.5 rounded-lg"
+                      style={{ fontWeight: 500, "--badge-color": riskColor } as CSSProperties}
+                    >
+                      {riskLevel}
+                    </span>
                     <p className="text-[#4a5565] text-[14px] mt-1">{getUVRange(currentUV)}</p>
                   </div>
                 </div>
+
+                {/* Location — directly under UV number */}
+                <div className="flex items-center gap-1.5 mt-2">
+                  <MapPin size={13} className="text-[#F54900] shrink-0" />
+                  <span className="text-[#4a5565] text-[13px] font-medium">
+                    {locationName}
+                  </span>
+                  {fetchedAt && (
+                    <span className="text-[11px] text-[#9ca3af] ml-1 flex items-center gap-1">
+                      <Clock size={11} />
+                      {formatFetchTime(fetchedAt)}
+                    </span>
+                  )}
+                </div>
+
+                {/* Advice text */}
                 <p className="text-[#4a5565] text-[14px] mt-3">
-                  {currentUV <= 2 ? "UV is low \u2014 no sun protection needed right now."
-                    : currentUV <= 5 ? "Sunscreen required. Apply SPF 50+ before going outside."
+                  {currentUV <= 2
+                    ? "UV is low \u2014 no sun protection needed right now."
+                    : currentUV <= 5
+                    ? "Sunscreen required. Apply SPF 50+ before going outside."
                     : "High UV \u2014 SPF 50+ essential. Seek shade during peak hours."}
                 </p>
               </div>
+
+              {/* UV risk scale */}
               <div className="flex flex-col gap-2">
                 <p className="text-[#364153] text-[12px]" style={{ fontWeight: 600 }}>UV Risk Scale</p>
                 {uvScale.map(item => (
@@ -195,8 +221,9 @@ export default function DashboardPage() {
             <h3 className="text-[#0a0a0a] text-[16px]" style={{ fontWeight: 500 }}>Risk Level</h3>
           </div>
           <div className="mt-6">
-            {uvLoading ? <div className="h-8 w-24 bg-gray-100 rounded-lg animate-pulse" /> :
-              <p className="text-[#101828] text-[30px]" style={{ fontWeight: 700 }}>{riskLevel}</p>}
+            {uvLoading
+              ? <div className="h-8 w-24 bg-gray-100 rounded-lg animate-pulse" />
+              : <p className="text-[#101828] text-[30px]" style={{ fontWeight: 700 }}>{riskLevel}</p>}
             <p className="text-[#4a5565] text-[14px] mt-1">Current exposure risk</p>
           </div>
         </div>
@@ -207,8 +234,9 @@ export default function DashboardPage() {
             <h3 className="text-[#0a0a0a] text-[16px]" style={{ fontWeight: 500 }}>Peak Hours</h3>
           </div>
           <div className="mt-6">
-            {uvLoading ? <div className="h-8 w-28 bg-gray-100 rounded-lg animate-pulse" /> :
-              <p className="text-[#101828] text-[24px]" style={{ fontWeight: 700 }}>{peakHours}</p>}
+            {uvLoading
+              ? <div className="h-8 w-28 bg-gray-100 rounded-lg animate-pulse" />
+              : <p className="text-[#101828] text-[24px]" style={{ fontWeight: 700 }}>{peakHours}</p>}
             <p className="text-[#4a5565] text-[14px] mt-1">Seek shade during this time</p>
           </div>
         </div>
@@ -252,15 +280,21 @@ export default function DashboardPage() {
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
                 <XAxis dataKey="time" tick={{ fontSize: 12, fill: "#6B7280" }} axisLine={{ stroke: "#6B7280" }} tickLine={{ stroke: "#6B7280" }} />
-                <YAxis tick={{ fontSize: 12, fill: "#6B7280" }} axisLine={{ stroke: "#6B7280" }} tickLine={{ stroke: "#6B7280" }}
+                <YAxis
+                  tick={{ fontSize: 12, fill: "#6B7280" }} axisLine={{ stroke: "#6B7280" }} tickLine={{ stroke: "#6B7280" }}
                   label={{ value: "UV Index", angle: -90, position: "insideLeft", style: { fontSize: 12, fill: "#808080" } }}
-                  domain={[0, yAxisMax]} allowDecimals={false} />
+                  domain={[0, yAxisMax]} allowDecimals={false}
+                />
                 <ReferenceLine y={3} stroke="#F0B100" strokeDasharray="4 4" label={{ value: "SPF 50+ required", position: "insideTopRight", fontSize: 10, fill: "#b45309" }} />
                 <ReferenceLine y={6} stroke="#FF6900" strokeDasharray="4 4" label={{ value: "High",   position: "insideTopRight", fontSize: 10, fill: "#FF6900" }} />
                 <ReferenceLine y={8} stroke="#FB2C36" strokeDasharray="4 4" label={{ value: "V.High", position: "insideTopRight", fontSize: 10, fill: "#FB2C36" }} />
                 <Tooltip content={<CustomTooltip />} />
-                <Area type="monotone" dataKey="uv" stroke={forecastColor} strokeWidth={2.5} fill="url(#uvGradient)" name="UV Index"
-                  dot={{ fill: forecastColor, r: 3, strokeWidth: 0 }} activeDot={{ r: 5, fill: forecastColor, strokeWidth: 0 }} />
+                <Area
+                  type="monotone" dataKey="uv" stroke={forecastColor} strokeWidth={2.5}
+                  fill="url(#uvGradient)" name="UV Index"
+                  dot={{ fill: forecastColor, r: 3, strokeWidth: 0 }}
+                  activeDot={{ r: 5, fill: forecastColor, strokeWidth: 0 }}
+                />
               </AreaChart>
             </ResponsiveContainer>
           </div>
@@ -299,7 +333,8 @@ export default function DashboardPage() {
           <div className="flex-1">
             <p className="text-[#101828] text-[14px]" style={{ fontWeight: 600 }}>
               {sunscreenRec
-                ? currentUV <= 2 ? "No sunscreen required at UV 0\u20132."
+                ? currentUV <= 2
+                  ? "No sunscreen required at UV 0\u20132."
                   : `${sunscreenRec.spfLevel} required \u2014 UV is currently ${currentUV} (${riskLevel}).`
                 : "Loading recommendation..."}
             </p>

@@ -1,5 +1,5 @@
 import { Outlet, NavLink, useNavigate, Link } from "react-router";
-import { Sun, BookOpen, User, Bell, LogOut, Info } from "lucide-react";
+import { Sun, BookOpen, User, Bell, LogOut, Info, Zap } from "lucide-react";
 import { createContext, useContext, useState, useEffect } from "react";
 import {
   readUVCache,
@@ -48,10 +48,6 @@ export function useAppContext() {
   return ctx;
 }
 
-// ---------------------------------------------------------------------------
-// Auth helpers
-// ---------------------------------------------------------------------------
-
 function decodeJwtPayload(token: string): Record<string, any> | null {
   try {
     const base64 = token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
@@ -80,10 +76,6 @@ function clearAuthStorage() {
 }
 
 const backendUrl = import.meta.env.VITE_BACKEND_URL;
-
-// ---------------------------------------------------------------------------
-// UV + geocoding helpers
-// ---------------------------------------------------------------------------
 
 function getUVRisk(uv: number) {
   if (uv <= 2)  return { level: "Low",       color: "#00C950" };
@@ -137,10 +129,6 @@ async function geocodeLocation(
     return null;
   }
 }
-
-// ---------------------------------------------------------------------------
-// Layout component
-// ---------------------------------------------------------------------------
 
 export default function Layout() {
   const navigate = useNavigate();
@@ -297,7 +285,6 @@ export default function Layout() {
     }
   }
 
-  // --- Logout now navigates to landing page ("/") instead of "/login" ---
   const handleLogout = () => {
     clearAuthStorage();
     setIsLoggedIn(false);
@@ -332,10 +319,10 @@ export default function Layout() {
   };
 
   const navItems = [
-    { to: "/dashboard",           label: "Dashboard", end: true, icon: Sun      },
-    { to: "/dashboard/education", label: "Education",            icon: BookOpen },
-    { to: "/dashboard/profile",   label: "Profile",              icon: User     },
-    { to: "/dashboard/reminders", label: "Reminders",            icon: Bell     },
+    { to: "/dashboard",           label: "My Sun Check", end: true, icon: Sun      },
+    { to: "/dashboard/education", label: "Learn",                   icon: BookOpen },
+    { to: "/dashboard/profile",   label: "My Profile",              icon: User     },
+    { to: "/dashboard/reminders", label: "Reminders",               icon: Bell     },
   ];
 
   return (

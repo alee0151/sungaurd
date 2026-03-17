@@ -1,5 +1,5 @@
 import { Outlet, NavLink, useNavigate, Link } from "react-router";
-import { Sun, BookOpen, User, Bell, LogOut, Info, Zap } from "lucide-react";
+import { Sun, BookOpen, User, Bell, LogOut, Home } from "lucide-react";
 import { createContext, useContext, useState, useEffect } from "react";
 import {
   readUVCache,
@@ -360,10 +360,10 @@ export default function Layout() {
 
               <Link
                 to="/"
-                className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-[14px] transition-colors text-[#4a5565] hover:bg-blue-50 hover:text-[#155dfc]"
+                className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-[14px] transition-colors text-[#4a5565] hover:bg-orange-50 hover:text-[#FF6900]"
                 style={{ fontWeight: 500 }}
               >
-                <Info size={18} />About
+                <Home size={18} />Home
               </Link>
 
               {username && (

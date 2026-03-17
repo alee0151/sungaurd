@@ -1,12 +1,33 @@
 import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router";
-import { Sun, Shield, Activity, Bell, ChevronRight, Zap, User, MapPin, Smile } from "lucide-react";
+import { Sun, Shield, Activity, Bell, ChevronRight, Zap, User, MapPin, Smile, AlertTriangle, CheckCircle, TrendingUp } from "lucide-react";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
+
+function getUVRisk(uv: number) {
+  if (uv <= 2)  return { level: "Low",       color: "#00C950", bg: "#f0fdf4", border: "#bbf7d0" };
+  if (uv <= 5)  return { level: "Moderate",  color: "#F0B100", bg: "#fefce8", border: "#fde68a" };
+  if (uv <= 7)  return { level: "High",      color: "#FF6900", bg: "#fff7ed", border: "#fed7aa" };
+  if (uv <= 10) return { level: "Very High", color: "#FB2C36", bg: "#fff1f2", border: "#fecdd3" };
+  return               { level: "Extreme",   color: "#9810FA", bg: "#faf5ff", border: "#e9d5ff" };
+}
+
+function getRecommendation(uv: number): string {
+  if (uv <= 2)  return "SPF 15+ if outdoors. No special precautions needed.";
+  if (uv <= 5)  return "SPF 30+, wear a hat during midday hours.";
+  if (uv <= 7)  return "SPF 50+, seek shade between 10am–4pm.";
+  if (uv <= 10) return "SPF 50+, minimise outdoor exposure. Wear protective clothing.";
+  return               "Avoid being outside. SPF 50+ and full cover essential.";
+}
 
 export default function LandingPage() {
   const navigate = useNavigate();
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [username, setUsername] = useState("");
+  const [uvIndex, setUvIndex] = useState<number | null>(null);
+  const [location, setLocation] = useState("Detecting...");
+  const [uvLoading, setUvLoading] = useState(false);
+
+  const OW_API_KEY = (import.meta as any).env?.VITE_OPENWEATHER_API_KEY;
 
   useEffect(() => {
     const stored = localStorage.getItem("sunguard_loggedin");
@@ -14,8 +35,55 @@ export default function LandingPage() {
     if (stored === "true" && storedUser) {
       setIsLoggedIn(true);
       setUsername(storedUser);
+      fetchUVForUser();
     }
   }, []);
+
+  async function fetchUVForUser() {
+    setUvLoading(true);
+    const savedLocation = localStorage.getItem("sunguard_location");
+    try {
+      if (savedLocation && savedLocation.trim()) {
+        setLocation(savedLocation.trim());
+        const geo = await fetch(
+          `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(savedLocation)}&format=json&limit=1`,
+          { headers: { "Accept-Language": "en" } }
+        ).then((r) => r.json());
+        if (geo.length && OW_API_KEY) {
+          const { lat, lon } = { lat: parseFloat(geo[0].lat), lon: parseFloat(geo[0].lon) };
+          const data = await fetch(
+            `https://api.openweathermap.org/data/3.0/onecall?lat=${lat}&lon=${lon}&exclude=minutely,daily,alerts,hourly&appid=${OW_API_KEY}&units=metric`
+          ).then((r) => r.json());
+          setUvIndex(Math.round(data.current.uvi * 10) / 10);
+        }
+      } else if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+          async (pos) => {
+            const { latitude: lat, longitude: lon } = pos.coords;
+            const geo = await fetch(
+              `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json`
+            ).then((r) => r.json());
+            const addr = geo.address || {};
+            const city = addr.suburb || addr.city || addr.town || "Your Location";
+            const state = addr.state || "";
+            setLocation(state ? `${city}, ${state}` : city);
+            if (OW_API_KEY) {
+              const data = await fetch(
+                `https://api.openweathermap.org/data/3.0/onecall?lat=${lat}&lon=${lon}&exclude=minutely,daily,alerts,hourly&appid=${OW_API_KEY}&units=metric`
+              ).then((r) => r.json());
+              setUvIndex(Math.round(data.current.uvi * 10) / 10);
+            }
+            setUvLoading(false);
+          },
+          () => setUvLoading(false)
+        );
+        return;
+      }
+    } catch {
+      // silently fail
+    }
+    setUvLoading(false);
+  }
 
   const handleLogout = () => {
     localStorage.removeItem("sunguard_loggedin");
@@ -23,6 +91,9 @@ export default function LandingPage() {
     setIsLoggedIn(false);
     setUsername("");
   };
+
+  const risk = uvIndex !== null ? getUVRisk(uvIndex) : null;
+  const recommendation = uvIndex !== null ? getRecommendation(uvIndex) : null;
 
   return (
     <div className="min-h-screen bg-[#fff9f5] flex flex-col font-sans">
@@ -92,6 +163,60 @@ export default function LandingPage() {
             style={{ background: "radial-gradient(circle, #155dfc 0%, #9810FA 100%)" }} />
 
           <div className="max-w-[1200px] mx-auto px-6 relative z-10">
+
+            {/* Logged-in UV widget — full width banner above hero */}
+            {isLoggedIn && (
+              <div className="mb-10 grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* UV Index box */}
+                <div
+                  className="rounded-2xl p-6 flex items-center gap-5 border shadow-md"
+                  style={{
+                    backgroundColor: risk?.bg ?? "#fff7ed",
+                    borderColor: risk?.border ?? "#fed7aa",
+                  }}
+                >
+                  <div
+                    className="w-16 h-16 rounded-2xl flex flex-col items-center justify-center shrink-0 shadow-sm"
+                    style={{ backgroundColor: risk?.color ?? "#FF6900" }}
+                  >
+                    <Sun size={22} className="text-white mb-0.5" />
+                    <span className="text-white text-[20px] font-extrabold leading-none">
+                      {uvLoading ? "…" : uvIndex ?? "—"}
+                    </span>
+                  </div>
+                  <div>
+                    <p className="text-[12px] font-semibold uppercase tracking-widest mb-0.5" style={{ color: risk?.color ?? "#FF6900" }}>Current UV Index</p>
+                    <p className="text-[#101828] text-[22px] font-extrabold leading-tight">
+                      {uvLoading ? "Loading..." : risk ? `${risk.level} Risk` : "No data"}
+                    </p>
+                    <div className="flex items-center gap-1.5 mt-1">
+                      <MapPin size={13} className="text-gray-400 shrink-0" />
+                      <span className="text-gray-500 text-[13px] truncate max-w-[220px]">{location}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Recommendation box */}
+                <div className="rounded-2xl p-6 flex items-start gap-4 bg-white border border-gray-200 shadow-md">
+                  <div className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0 bg-blue-50">
+                    <CheckCircle size={22} className="text-blue-500" />
+                  </div>
+                  <div>
+                    <p className="text-[12px] font-semibold uppercase tracking-widest text-blue-500 mb-1">Today's Recommendation</p>
+                    <p className="text-[#101828] text-[15px] font-semibold leading-snug">
+                      {uvLoading ? "Fetching advice..." : recommendation ?? "Sign in to get personalised advice."}
+                    </p>
+                    <Link
+                      to="/dashboard"
+                      className="inline-flex items-center gap-1.5 mt-3 text-[13px] font-bold text-[#FF6900] hover:underline"
+                    >
+                      <TrendingUp size={13} /> View full forecast
+                    </Link>
+                  </div>
+                </div>
+              </div>
+            )}
+
             <div className="flex flex-col lg:flex-row items-center gap-12">
 
               {/* Left copy */}
@@ -175,7 +300,6 @@ export default function LandingPage() {
                     className="w-full h-full object-cover"
                   />
                 </div>
-                {/* Floating UV badge */}
                 <div className="absolute -bottom-4 -left-4 bg-white rounded-2xl shadow-xl px-5 py-3 flex items-center gap-3 border border-orange-100">
                   <div className="w-10 h-10 rounded-xl flex items-center justify-center"
                     style={{ backgroundImage: "linear-gradient(135deg,#FF6900,#f63b9a)" }}>
@@ -186,7 +310,6 @@ export default function LandingPage() {
                     <p className="text-[15px] font-extrabold text-[#101828]">UV 8 &mdash; Very High</p>
                   </div>
                 </div>
-                {/* Floating reminder badge */}
                 <div className="absolute -top-4 -right-4 bg-white rounded-2xl shadow-xl px-4 py-2.5 flex items-center gap-2 border border-pink-100">
                   <Bell size={16} className="text-pink-500" />
                   <p className="text-[13px] font-bold text-[#101828]">Reapply sunscreen ⚠️</p>
@@ -196,12 +319,10 @@ export default function LandingPage() {
           </div>
         </section>
 
-        {/* HOW IT WORKS + WHY IT SLAPS — side by side */}
+        {/* HOW IT WORKS */}
         <section id="how" className="py-20 bg-white">
           <div className="max-w-[1200px] mx-auto px-6">
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 items-start">
-
-              {/* LEFT — 3 steps */}
               <div id="features">
                 <p className="text-orange-500 font-bold text-[13px] uppercase tracking-widest mb-2">Super simple</p>
                 <h2 className="text-[32px] md:text-[38px] font-extrabold text-[#101828] tracking-tight mb-10">
@@ -209,36 +330,13 @@ export default function LandingPage() {
                 </h2>
                 <div className="flex flex-col gap-5">
                   {[
-                    {
-                      step: "01",
-                      emoji: "📲",
-                      color: "from-orange-400 to-pink-500",
-                      bg: "bg-orange-50",
-                      title: "Share your location",
-                      desc: "SunGuard pulls live UV data for wherever you are — beach, park, city, wherever."
-                    },
-                    {
-                      step: "02",
-                      emoji: "🧬",
-                      color: "from-blue-400 to-violet-500",
-                      bg: "bg-blue-50",
-                      title: "Set your skin type",
-                      desc: "We crunch your skin tone + the UV level to give you advice that actually fits you."
-                    },
-                    {
-                      step: "03",
-                      emoji: "⏰",
-                      color: "from-green-400 to-teal-500",
-                      bg: "bg-green-50",
-                      title: "Get reminders",
-                      desc: "Set a sunscreen timer and we'll ping you when it's time to reapply. Easy."
-                    },
+                    { step: "01", emoji: "📲", color: "from-orange-400 to-pink-500", bg: "bg-orange-50", title: "Share your location", desc: "SunGuard pulls live UV data for wherever you are — beach, park, city, wherever." },
+                    { step: "02", emoji: "🧬", color: "from-blue-400 to-violet-500", bg: "bg-blue-50",   title: "Set your skin type",  desc: "We crunch your skin tone + the UV level to give you advice that actually fits you." },
+                    { step: "03", emoji: "⏰", color: "from-green-400 to-teal-500",  bg: "bg-green-50",  title: "Get reminders",       desc: "Set a sunscreen timer and we'll ping you when it's time to reapply. Easy." },
                   ].map((s) => (
                     <div key={s.step} className={`${s.bg} rounded-2xl p-6 relative overflow-hidden flex items-start gap-5`}>
                       <span className="absolute top-3 right-5 text-[48px] font-extrabold text-black/5 select-none leading-none">{s.step}</span>
-                      <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${s.color} flex items-center justify-center text-[22px] shrink-0 shadow-md`}>
-                        {s.emoji}
-                      </div>
+                      <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${s.color} flex items-center justify-center text-[22px] shrink-0 shadow-md`}>{s.emoji}</div>
                       <div>
                         <h3 className="text-[17px] font-extrabold text-[#101828] mb-1">{s.title}</h3>
                         <p className="text-gray-600 text-[14px] leading-relaxed">{s.desc}</p>
@@ -247,8 +345,6 @@ export default function LandingPage() {
                   ))}
                 </div>
               </div>
-
-              {/* RIGHT — Why it slaps */}
               <div>
                 <p className="text-orange-500 font-bold text-[13px] uppercase tracking-widest mb-2">Why it slaps</p>
                 <h2 className="text-[32px] md:text-[38px] font-extrabold text-[#101828] tracking-tight mb-10">
@@ -256,30 +352,10 @@ export default function LandingPage() {
                 </h2>
                 <div className="flex flex-col gap-4">
                   {[
-                    {
-                      icon: Activity,
-                      grad: "from-blue-400 to-violet-500",
-                      title: "Live UV tracking",
-                      desc: "Minute-by-minute UV index for your exact spot, not just your city."
-                    },
-                    {
-                      icon: MapPin,
-                      grad: "from-orange-400 to-pink-500",
-                      title: "Interactive UV map",
-                      desc: "Tap anywhere on the map to see UV levels — great for planning your day."
-                    },
-                    {
-                      icon: Smile,
-                      grad: "from-green-400 to-teal-500",
-                      title: "Skin type personalisation",
-                      desc: "Your skin tone = your advice. No generic tips, only what applies to you."
-                    },
-                    {
-                      icon: Bell,
-                      grad: "from-pink-400 to-rose-500",
-                      title: "Sunscreen timer",
-                      desc: "Tap once when you apply sunscreen and we remind you to reapply in 2 hours."
-                    },
+                    { icon: Activity, grad: "from-blue-400 to-violet-500",  title: "Live UV tracking",          desc: "Minute-by-minute UV index for your exact spot, not just your city." },
+                    { icon: MapPin,   grad: "from-orange-400 to-pink-500",   title: "Interactive UV map",         desc: "Tap anywhere on the map to see UV levels — great for planning your day." },
+                    { icon: Smile,    grad: "from-green-400 to-teal-500",    title: "Skin type personalisation",  desc: "Your skin tone = your advice. No generic tips, only what applies to you." },
+                    { icon: Bell,     grad: "from-pink-400 to-rose-500",     title: "Sunscreen timer",            desc: "Tap once when you apply sunscreen and we remind you to reapply in 2 hours." },
                   ].map((f, i) => (
                     <div key={i} className="flex items-start gap-4 p-5 bg-[#fff9f5] rounded-2xl border border-gray-100 hover:shadow-md transition-shadow">
                       <div className={`w-11 h-11 rounded-xl bg-gradient-to-br ${f.grad} flex items-center justify-center shrink-0 shadow-sm`}>
@@ -293,7 +369,6 @@ export default function LandingPage() {
                   ))}
                 </div>
               </div>
-
             </div>
           </div>
         </section>
@@ -330,22 +405,10 @@ export default function LandingPage() {
             </div>
             <div className="flex flex-col gap-4">
               {[
-                {
-                  q: "Is SunGuard free?",
-                  a: "Yep, 100% free. No hidden charges, no premium tier."
-                },
-                {
-                  q: "Does it work outside Australia?",
-                  a: "The UV data works globally. The interactive map is scoped to Australia for now, but UV readings work anywhere."
-                },
-                {
-                  q: "Why do I need to set my skin type?",
-                  a: "Darker skin tones have more melanin protection, lighter tones burn faster. Your skin type lets us give you accurate safe-exposure windows."
-                },
-                {
-                  q: "How often does UV data update?",
-                  a: "Live data is fetched fresh every time and cached for 60 minutes to keep it fast without hammering the API."
-                },
+                { q: "Is SunGuard free?",                    a: "Yep, 100% free. No hidden charges, no premium tier." },
+                { q: "Does it work outside Australia?",       a: "The UV data works globally. The interactive map is scoped to Australia for now, but UV readings work anywhere." },
+                { q: "Why do I need to set my skin type?",    a: "Darker skin tones have more melanin protection, lighter tones burn faster. Your skin type lets us give you accurate safe-exposure windows." },
+                { q: "How often does UV data update?",        a: "Live data is fetched fresh every time and cached for 60 minutes to keep it fast without hammering the API." },
               ].map((item, i) => (
                 <div key={i} className="bg-[#fff9f5] border border-gray-100 rounded-2xl px-6 py-5">
                   <p className="text-[15px] font-extrabold text-[#101828] mb-1.5">{item.q}</p>
@@ -363,9 +426,7 @@ export default function LandingPage() {
             {isLoggedIn ? (
               <>
                 <p className="text-white/80 text-[14px] font-bold uppercase tracking-widest mb-4">You&apos;re already in 🤙</p>
-                <h2 className="text-[42px] md:text-[52px] font-extrabold text-white mb-5 leading-tight">
-                  Hey {username}, <br />go check your UV
-                </h2>
+                <h2 className="text-[42px] md:text-[52px] font-extrabold text-white mb-5 leading-tight">Hey {username}, <br />go check your UV</h2>
                 <p className="text-white/80 text-[18px] mb-10">Your Sun Check is ready and waiting.</p>
                 <Link
                   to="/dashboard"
@@ -378,9 +439,7 @@ export default function LandingPage() {
             ) : (
               <>
                 <p className="text-white/80 text-[14px] font-bold uppercase tracking-widest mb-4">It&apos;s free, always</p>
-                <h2 className="text-[42px] md:text-[52px] font-extrabold text-white mb-5 leading-tight">
-                  Stop guessing. <br />Start checking. ☀️
-                </h2>
+                <h2 className="text-[42px] md:text-[52px] font-extrabold text-white mb-5 leading-tight">Stop guessing. <br />Start checking. ☀️</h2>
                 <p className="text-white/80 text-[18px] mb-10">Takes 30 seconds to sign up. Your skin will thank you.</p>
                 <Link
                   to="/signup"
@@ -402,9 +461,7 @@ export default function LandingPage() {
             <Sun className="text-orange-400" size={22} strokeWidth={2} />
             <span className="text-[18px] font-extrabold tracking-tight">SunGuard</span>
           </div>
-          <div className="text-gray-500 text-[13px]">
-            &copy; {new Date().getFullYear()} SunGuard. Made with ☕ for sun-lovers.
-          </div>
+          <div className="text-gray-500 text-[13px]">&copy; {new Date().getFullYear()} SunGuard. Made with ☕ for sun-lovers.</div>
           <div className="flex gap-6 text-[13px] text-gray-500">
             <a href="#" className="hover:text-white transition-colors">Privacy</a>
             <a href="#" className="hover:text-white transition-colors">Terms</a>

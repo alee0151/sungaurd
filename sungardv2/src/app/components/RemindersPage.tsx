@@ -1,13 +1,13 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import {
   AlertTriangle, Clock, History, Droplets, Flame, Trophy,
-  Calendar, Edit2, X, Loader2, WifiOff, Sun, ShieldCheck,
+  Calendar, Edit2, X, Loader2, WifiOff, Sun, ShieldCheck, CheckCircle2,
 } from "lucide-react";
 import { useAppContext } from "./Layout";
 
 const backendUrl = import.meta.env.VITE_BACKEND_URL;
 
-const HIGH_UV = 3;
+const HIGH_UV = 3; // peak UV threshold
 
 function uvLabel(uv: number): string {
   if (uv <= 2)  return "Low";
@@ -23,6 +23,56 @@ function uvColor(uv: number): string {
   if (uv <= 7)  return "#ea580c";
   if (uv <= 10) return "#dc2626";
   return "#7c3aed";
+}
+
+/**
+ * Given today's Application logs, determine how many 2-hr peak-hour slots
+ * have been covered and how many are required.
+ *
+ * Peak hours = any hour where UV is stored >= HIGH_UV.
+ * We use the application timestamps to decide coverage:
+ *   - Each application "covers" from its time up to (time + 2 hours).
+ *   - We then check whether every 2-hr block inside today's peak window
+ *     is covered by at least one application.
+ *
+ * For a simpler UX approach we instead:
+ *   - Build 2-hr slots starting from the first peak-hour app or 10:00
+ *     (typical peak start), capped at the last peak hour.
+ *   - A slot is covered if there is an application within 2 hrs of the
+ *     slot start.
+ *
+ * For MVP / frontend-only we use the hourlyForecast from context to know
+ * which hours today are peak, then check if the user has applied at least
+ * once in every 2-hr window during those hours.
+ */
+function computePeakCoverage(
+  peakHours: number[],                // 0-23 hour numbers that are peak today
+  appTimestamps: Date[],              // sorted application timestamps for today
+  timerDurationSec: number
+): { required: number; covered: number; slots: { label: string; covered: boolean }[] } {
+  if (peakHours.length === 0) return { required: 0, covered: 0, slots: [] };
+
+  const minPeak = Math.min(...peakHours);
+  const maxPeak = Math.max(...peakHours);
+
+  // Build 2-hr slots spanning the peak window
+  const slots: { label: string; covered: boolean }[] = [];
+  for (let h = minPeak; h <= maxPeak; h += 2) {
+    const slotEnd = Math.min(h + 2, maxPeak + 1);
+    const label   = `${String(h).padStart(2, "0")}:00–${String(slotEnd).padStart(2, "0")}:00`;
+    // A slot is covered if at least one application falls within [h, slotEnd)
+    // or a prior application's coverage window extends into this slot.
+    const covered = appTimestamps.some((ts) => {
+      const appHour    = ts.getHours() + ts.getMinutes() / 60;
+      const coverUntil = appHour + timerDurationSec / 3600;
+      return coverUntil >= h && appHour < slotEnd;
+    });
+    slots.push({ label, covered });
+  }
+
+  const required = slots.length;
+  const covered  = slots.filter((s) => s.covered).length;
+  return { required, covered, slots };
 }
 
 interface ProtectionLog {
@@ -104,15 +154,15 @@ async function apiFetchStreak(token: string): Promise<StreakData> {
 
 export default function RemindersPage() {
   const { uvData } = useAppContext();
-  const { currentUV } = uvData;
+  const { currentUV, hourlyForecast } = uvData;
   const isHighUV = currentUV >= HIGH_UV;
 
-  const [timerDuration, setTimerDuration]           = useState(() => loadLocal<number>(LS_TIMER_DURATION, 7200));
-  const [showTimerEditModal, setShowTimerEditModal]   = useState(false);
-  const [showTimeUpModal, setShowTimeUpModal]         = useState(false);
-  const initialRemaining                              = getSecondsRemaining();
-  const [timeRemaining, setTimeRemaining]             = useState<number>(initialRemaining ?? timerDuration);
-  const [timerRunning, setTimerRunning]               = useState<boolean>(initialRemaining !== null && initialRemaining > 0);
+  const [timerDuration, setTimerDuration]         = useState(() => loadLocal<number>(LS_TIMER_DURATION, 7200));
+  const [showTimerEditModal, setShowTimerEditModal] = useState(false);
+  const [showTimeUpModal, setShowTimeUpModal]       = useState(false);
+  const initialRemaining                            = getSecondsRemaining();
+  const [timeRemaining, setTimeRemaining]           = useState<number>(initialRemaining ?? timerDuration);
+  const [timerRunning, setTimerRunning]             = useState<boolean>(initialRemaining !== null && initialRemaining > 0);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const [logs, setLogs]                   = useState<ProtectionLog[]>([]);
@@ -120,9 +170,9 @@ export default function RemindersPage() {
   const [longestStreak, setLongestStreak] = useState(0);
   const [lastHighUVDate, setLastHighUV]   = useState<string | null>(null);
 
-  const [loading, setLoading]         = useState(true);
-  const [offline, setOffline]         = useState(false);
-  const [saving, setSaving]           = useState(false);
+  const [loading, setLoading]           = useState(true);
+  const [offline, setOffline]           = useState(false);
+  const [saving, setSaving]             = useState(false);
   const [streakBroken, setStreakBroken] = useState(false);
 
   useEffect(() => {
@@ -225,8 +275,8 @@ export default function RemindersPage() {
       const copy = [...prev];
       const openIdx = copy.findIndex((l) => l.type === "Application" && !l.actual_duration_seconds);
       if (openIdx !== -1) {
-        const open  = copy[openIdx];
-        const start = new Date(open.logged_at).getTime();
+        const open    = copy[openIdx];
+        const start   = new Date(open.logged_at).getTime();
         const elapsed = Math.round(Math.min(stoppedAt - start, (open.duration_seconds || 7200) * 1000) / 1000);
         copy[openIdx] = { ...open, actual_duration_seconds: elapsed };
       }
@@ -240,7 +290,8 @@ export default function RemindersPage() {
     setShowTimerEditModal(false);
   };
 
-  const todayStr = new Date().toISOString().slice(0, 10);
+  // ── Derived values ──────────────────────────────────────────────────────────
+  const todayStr  = new Date().toISOString().slice(0, 10);
   const todayApps = logs.filter((l) => l.type === "Application" && l.logged_at.slice(0, 10) === todayStr);
   const applicationsToday = todayApps.length;
 
@@ -248,13 +299,29 @@ export default function RemindersPage() {
     if (l.actual_duration_seconds) return sum + l.actual_duration_seconds / 60;
     const timerStart = loadLocal<number | null>(LS_TIMER_START, null);
     if (timerRunning && timerStart) {
-      const elapsed = Math.round((Date.now() - timerStart) / 1000 / 60);
-      return sum + elapsed;
+      return sum + Math.round((Date.now() - timerStart) / 1000 / 60);
     }
     return sum;
   }, 0);
   const hoursProtected = (minutesProtected / 60).toFixed(1);
 
+  // Peak hours from today's hourly forecast
+  const peakHours = hourlyForecast
+    .filter((h) => h.uv >= HIGH_UV)
+    .map((h) => parseInt(h.time.split(":")[0], 10));
+
+  // Today's application timestamps
+  const appTimestamps = todayApps
+    .map((l) => new Date(l.logged_at))
+    .sort((a, b) => a.getTime() - b.getTime());
+
+  // Peak coverage calculation
+  const peakCoverage = computePeakCoverage(peakHours, appTimestamps, timerDuration);
+  const allPeakSlotsCovered = peakCoverage.required > 0
+    ? peakCoverage.covered >= peakCoverage.required
+    : true; // no peak hours today → streak safe
+
+  // Weekly grid
   const daysOfWeek   = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
   const today        = new Date();
   const dow          = today.getDay();
@@ -267,6 +334,7 @@ export default function RemindersPage() {
     return {
       hasAny:    dayLogs.length > 0,
       hasHighUV: dayLogs.some((l) => (l.uv_index_at_application ?? 0) >= HIGH_UV),
+      count:     dayLogs.length,
     };
   });
   const todayIndex = dow === 0 ? 6 : dow - 1;
@@ -305,13 +373,13 @@ export default function RemindersPage() {
           <AlertTriangle size={18} className="text-[#FF6900] mt-0.5 shrink-0" />
           <div>
             <p className="text-[#7e2a0c] text-[14px] font-semibold">High UV — Protection Required</p>
-            <p className="text-[#9f2d00] text-[14px]">UV {currentUV} ({uvLabel(currentUV)}). Apply SPF 50+ now to maintain your streak.</p>
+            <p className="text-[#9f2d00] text-[14px]">UV {currentUV} ({uvLabel(currentUV)}). Apply SPF 50+ every 2 hrs during peak hours to maintain your streak.</p>
           </div>
         </div>
       ) : (
         <div className="bg-[#f0fdf4] border border-green-200 rounded-xl px-5 py-3 flex items-center gap-3">
           <Sun size={16} className="text-green-500 shrink-0" />
-          <p className="text-green-700 text-[13px]">UV {currentUV} ({uvLabel(currentUV)}) — Low UV right now. Your streak is safe, but applying sunscreen will extend it.</p>
+          <p className="text-green-700 text-[13px]">UV {currentUV} ({uvLabel(currentUV)}) — Low UV right now. No peak hours at the moment.</p>
         </div>
       )}
 
@@ -325,11 +393,11 @@ export default function RemindersPage() {
       {streakBroken && (
         <div className="bg-[#fff1f2] border border-red-200 rounded-xl px-5 py-3 flex items-center gap-3">
           <Flame size={16} className="text-red-400 shrink-0" />
-          <p className="text-red-600 text-[13px] font-medium">Streak reset — you missed sunscreen during a high UV window. Start fresh today!</p>
+          <p className="text-red-600 text-[13px] font-medium">Streak reset — you missed a peak-hour window yesterday. Start fresh today!</p>
         </div>
       )}
 
-      {/* ── ROW 1: Timer + Streak side-by-side ── */}
+      {/* ── ROW 1: Timer + Streak ── */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
         {/* Timer card */}
@@ -349,7 +417,6 @@ export default function RemindersPage() {
             {timerDuration >= 3600 ? `${timerDuration / 3600}hr` : `${timerDuration / 60}min`} interval — persists across refreshes
           </p>
 
-          {/* Ring + status */}
           <div className="flex flex-col sm:flex-row items-center gap-6 mb-5 flex-1">
             <div className="relative w-[130px] h-[130px] shrink-0">
               <svg className="w-full h-full -rotate-90" viewBox="0 0 120 120">
@@ -408,41 +475,119 @@ export default function RemindersPage() {
 
         {/* Streak card */}
         <div className="bg-white rounded-2xl border border-black/10 p-6 flex flex-col">
-          <h3 className="text-[#0a0a0a] text-[16px] font-semibold mb-5 flex items-center gap-2">
+          <h3 className="text-[#0a0a0a] text-[16px] font-semibold mb-4 flex items-center gap-2">
             <Trophy size={18} className="text-[#FF6900]" /> Protection Streak
           </h3>
 
-          {/* Streak number */}
+          {/* Top row: Today's count + Day streak */}
           {loading ? (
             <div className="w-full h-24 bg-gray-50 rounded-2xl animate-pulse mb-4" />
           ) : (
-            <div className="flex items-center gap-5 bg-gradient-to-br from-[#ffedd4] to-[#ffe4c4] border border-[#ffcf99] rounded-2xl p-5 mb-4">
-              <div className="flex shrink-0 items-center justify-center w-[60px] h-[60px] bg-white rounded-full shadow-sm">
-                <Flame size={32} className="text-[#FF6900]" fill="#FF6900" />
-              </div>
-              <div>
-                <div className="flex items-baseline gap-1">
-                  <span className="text-[36px] font-extrabold text-[#101828] leading-tight">{currentStreak}</span>
-                  <span className="text-[#9f2d00] text-[14px] font-bold">days</span>
+            <div className="grid grid-cols-2 gap-3 mb-4">
+              {/* Today's applications box */}
+              <div className="rounded-2xl p-4 bg-gradient-to-br from-[#fff7ed] to-[#ffe4c4] border border-[#ffcf99] flex flex-col items-center justify-center gap-1">
+                <div className="flex items-center justify-center w-10 h-10 bg-white rounded-full shadow-sm mb-1">
+                  <Droplets size={20} className="text-[#FF6900]" />
                 </div>
-                <span className="text-[#9f2d00] text-[13px] font-medium block">Current streak</span>
+                <div className="flex items-baseline gap-1">
+                  <span className="text-[32px] font-extrabold text-[#101828] leading-none">{applicationsToday}</span>
+                  <span className="text-[#9f2d00] text-[12px] font-bold">×</span>
+                </div>
+                <span className="text-[#9f2d00] text-[11px] font-semibold text-center leading-tight">Applied today</span>
+              </div>
+
+              {/* Day streak box */}
+              <div className="rounded-2xl p-4 bg-gradient-to-br from-[#faf5ff] to-[#ede9fe] border border-[#c4b5fd] flex flex-col items-center justify-center gap-1">
+                <div className="flex items-center justify-center w-10 h-10 bg-white rounded-full shadow-sm mb-1">
+                  <Flame size={20} className="text-[#7c3aed]" fill="#7c3aed" />
+                </div>
+                <div className="flex items-baseline gap-1">
+                  <span className="text-[32px] font-extrabold text-[#101828] leading-none">{currentStreak}</span>
+                  <span className="text-[#5b21b6] text-[12px] font-bold">days</span>
+                </div>
+                <span className="text-[#5b21b6] text-[11px] font-semibold text-center leading-tight">Day streak</span>
               </div>
             </div>
           )}
 
-          <p className="text-[#6a7282] text-[13px] flex items-center gap-1.5 mb-5">
+          {/* Streak rule explainer */}
+          <div className="bg-gray-50 rounded-xl px-4 py-3 mb-4 border border-black/5">
+            <p className="text-[#4a5565] text-[12px] font-semibold mb-0.5">How streaks work</p>
+            <p className="text-[#6a7282] text-[12px] leading-snug">
+              A day is credited to your streak only if you apply sunscreen in <strong>every 2-hr peak UV window</strong> (UV&nbsp;≥&nbsp;3) that day.
+            </p>
+          </div>
+
+          {/* Peak-hour coverage progress */}
+          {peakCoverage.required > 0 ? (
+            <div className="mb-4">
+              <div className="flex items-center justify-between mb-1.5">
+                <p className="text-[#4a5565] text-[12px] font-semibold">Today's peak-hour coverage</p>
+                <span className={`text-[12px] font-bold ${
+                  allPeakSlotsCovered ? "text-green-600" : "text-[#FF6900]"
+                }`}>
+                  {peakCoverage.covered}/{peakCoverage.required} slots
+                </span>
+              </div>
+              {/* Progress bar */}
+              <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden mb-2">
+                <div
+                  className="h-full rounded-full transition-all duration-500"
+                  style={{
+                    width: `${peakCoverage.required > 0 ? (peakCoverage.covered / peakCoverage.required) * 100 : 0}%`,
+                    background: allPeakSlotsCovered ? "#16a34a" : "#FF6900",
+                  }}
+                />
+              </div>
+              {/* Slot chips */}
+              <div className="flex flex-wrap gap-1.5">
+                {peakCoverage.slots.map((slot, i) => (
+                  <div
+                    key={i}
+                    className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium border ${
+                      slot.covered
+                        ? "bg-green-50 border-green-200 text-green-700"
+                        : "bg-orange-50 border-orange-200 text-orange-700"
+                    }`}
+                  >
+                    {slot.covered
+                      ? <CheckCircle2 size={10} className="text-green-500" />
+                      : <Clock size={10} className="text-orange-400" />}
+                    {slot.label}
+                  </div>
+                ))}
+              </div>
+              {allPeakSlotsCovered && (
+                <p className="text-green-600 text-[12px] font-semibold mt-2 flex items-center gap-1">
+                  <CheckCircle2 size={13} /> All peak windows covered — streak will be credited! 🎉
+                </p>
+              )}
+            </div>
+          ) : (
+            <div className="mb-4 bg-green-50 border border-green-200 rounded-xl px-4 py-3">
+              <p className="text-green-700 text-[12px] font-medium">No peak UV hours today — your streak is safe automatically.</p>
+            </div>
+          )}
+
+          <p className="text-[#6a7282] text-[13px] flex items-center gap-1.5 mb-4">
             <Trophy size={13} /> Best: <span className="font-bold text-[#101828] ml-1">{longestStreak} days</span>
           </p>
 
           {/* Weekly grid */}
-          <div className="flex-1">
+          <div>
             <p className="text-[#4a5565] text-[13px] font-semibold mb-3">This Week</p>
             <div className="flex justify-between items-end gap-1 w-full">
               {daysOfWeek.map((day, i) => {
-                const { hasAny, hasHighUV } = weeklyData[i];
+                const { hasAny, hasHighUV, count } = weeklyData[i];
                 const isToday = i === todayIndex;
                 return (
-                  <div key={day} className="flex flex-col items-center gap-1.5 flex-1">
+                  <div key={day} className="flex flex-col items-center gap-1 flex-1">
+                    {/* Application count badge */}
+                    {count > 0 && (
+                      <span className="text-[10px] font-bold" style={{ color: hasHighUV ? "#FF6900" : "#16a34a" }}>
+                        {count}×
+                      </span>
+                    )}
                     <div className={`w-9 h-9 rounded-full flex items-center justify-center transition-all ${
                       hasHighUV ? "bg-[#fff7ed] border-2 border-[#FF6900] shadow-sm scale-110"
                       : hasAny   ? "bg-[#f0fdf4] border-2 border-[#16a34a]"
@@ -467,22 +612,11 @@ export default function RemindersPage() {
             <div className="flex items-center gap-4 mt-3">
               <div className="flex items-center gap-1.5">
                 <Flame size={11} fill="#FF6900" className="text-[#FF6900]" />
-                <span className="text-[11px] text-[#6a7282]">High UV day</span>
+                <span className="text-[11px] text-[#6a7282]">Peak UV day</span>
               </div>
               <div className="flex items-center gap-1.5">
                 <Flame size={11} fill="#16a34a" className="text-[#16a34a]" />
-                <span className="text-[11px] text-[#6a7282]">Low UV bonus</span>
-              </div>
-            </div>
-            {/* Legend */}
-            <div className="mt-4 flex flex-col gap-1.5">
-              <div className="flex items-center gap-2">
-                <div className="w-2 h-2 rounded-full bg-[#FF6900]" />
-                <p className="text-[#6a7282] text-[11px]">High UV (≥3): apply to maintain streak</p>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-2 h-2 rounded-full bg-[#16a34a]" />
-                <p className="text-[#6a7282] text-[11px]">Low UV (&lt;3): no penalty, streak continues</p>
+                <span className="text-[11px] text-[#6a7282]">No peak UV</span>
               </div>
             </div>
           </div>
@@ -501,7 +635,7 @@ export default function RemindersPage() {
           <div className="flex flex-col gap-4">
             <div className="bg-[#f0fdf4] rounded-xl py-4 px-5 flex items-center justify-between">
               <div>
-                <p className="text-[#4a5565] text-[12px] mb-1">Applications Today</p>
+                <p className="text-[#4a5565] text-[12px] mb-1">Times Applied Today</p>
                 {loading ? <div className="h-7 w-10 bg-gray-100 rounded animate-pulse" /> :
                   <p className="text-[#166534] text-[26px] font-bold">{applicationsToday}</p>}
               </div>
@@ -630,7 +764,7 @@ export default function RemindersPage() {
                 UV {currentUV} — {uvLabel(currentUV)} conditions right now
               </p>
             )}
-            <p className="text-gray-500 mb-6 text-[14px]">Your protection window has expired. Apply SPF 50+ to maintain your streak.</p>
+            <p className="text-gray-500 mb-6 text-[14px]">Your protection window has expired. Apply SPF 50+ to cover this peak-hour slot and protect your streak.</p>
             <div className="flex flex-col gap-3">
               <button onClick={() => { setShowTimeUpModal(false); recordApplication(); }}
                 className="w-full bg-[#FF6900] hover:bg-[#E55E00] text-white py-3 rounded-xl font-bold cursor-pointer">

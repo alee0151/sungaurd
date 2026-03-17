@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { CheckCircle, AlertCircle, Eye, FileText, X, Sun } from "lucide-react";
+import { CheckCircle, AlertCircle, Eye, FileText, X, Sun, ChevronDown } from "lucide-react";
 import { useAppContext } from "./Layout";
 
 const skinTypes = [
@@ -38,9 +38,6 @@ function getRiskLevel(uv: number, skinType: number) {
   if (adjustedUV <= 9) return { level: "High", color: "#FF6900" };
   return { level: "Very High", color: "#FB2C36" };
 }
-
-const standardColors = ["#00C950", "#F0B100", "#FF6900", "#FB2C36", "#9810FA"];
-const colorBlindColors = ["#0077BB", "#33BBEE", "#EE7733", "#CC3311", "#AA3377"];
 
 const safetyTips = [
   { num: 1, title: "Apply Generously", desc: "Use 1 teaspoon per body area" },
@@ -83,10 +80,7 @@ function UVReportModal({
           className="rounded-t-3xl px-8 pt-8 pb-6 relative"
           style={{ backgroundImage: "linear-gradient(135deg, #FF6900 0%, #f63b9a 100%)" }}
         >
-          <button
-            onClick={onClose}
-            className="absolute top-5 right-5 w-8 h-8 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center transition-colors cursor-pointer"
-          >
+          <button onClick={onClose} className="absolute top-5 right-5 w-8 h-8 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center transition-colors cursor-pointer">
             <X size={16} className="text-white" />
           </button>
           <div className="flex items-center gap-3 mb-4">
@@ -117,7 +111,6 @@ function UVReportModal({
             </div>
           </div>
         </div>
-
         <div className="px-8 py-6 flex flex-col gap-5">
           <div className="grid grid-cols-2 gap-4">
             <div className="bg-[#fff7ed] rounded-2xl p-5 flex flex-col items-center">
@@ -129,14 +122,12 @@ function UVReportModal({
               <p className="text-[32px] font-extrabold leading-none" style={{ color: risk.color }}>{risk.level}</p>
             </div>
           </div>
-
           <div>
             <p className="text-[#4a5565] text-[13px] font-semibold mb-2">Exposure Risk</p>
             <div className="w-full h-3 bg-gray-100 rounded-full overflow-hidden">
               <div className="h-full rounded-full transition-all duration-500" style={{ width: `${riskPercent}%`, backgroundColor: risk.color }} />
             </div>
           </div>
-
           <div className="bg-[#eff6ff] rounded-2xl p-5">
             <div className="flex items-center gap-2 mb-2">
               <AlertCircle size={16} className="text-[#3B82F6]" />
@@ -144,7 +135,6 @@ function UVReportModal({
             </div>
             <p className="text-[#1e40af] text-[14px] leading-relaxed">{advice.general}</p>
           </div>
-
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="bg-[#fff7ed] rounded-2xl p-4">
               <p className="text-[#9f2d00] text-[13px] font-bold mb-1">UV-Specific Advice</p>
@@ -155,7 +145,6 @@ function UVReportModal({
               <p className="text-[#4a5565] text-[13px] leading-relaxed">{advice.riskText}</p>
             </div>
           </div>
-
           <div className="bg-[#f0fdf4] border border-[#bbf7d0] rounded-2xl px-5 py-4 flex items-start gap-3">
             <CheckCircle size={18} className="text-[#16a34a] shrink-0 mt-0.5" />
             <div>
@@ -163,7 +152,6 @@ function UVReportModal({
               <p className="text-[#166534] text-[13px] leading-relaxed">{actionText}</p>
             </div>
           </div>
-
           <div>
             <p className="text-[#0a0a0a] text-[15px] font-bold mb-3">Sun Safety Tips</p>
             <div className="grid grid-cols-2 gap-3">
@@ -178,7 +166,6 @@ function UVReportModal({
               ))}
             </div>
           </div>
-
           <p className="text-center text-[#9ca3af] text-[11px]">
             This report is personalised based on your skin type and the current UV index at the time of generation. Always consult a health professional for medical advice.
           </p>
@@ -191,13 +178,11 @@ function UVReportModal({
 // ---------- MAIN PAGE ----------
 export default function ProfilePage() {
   const { uvData, skinType, setSkinType, username } = useAppContext();
-  const [colorBlindMode, setColorBlindMode] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
 
   const risk = getRiskLevel(uvData.currentUV, skinType);
-  const colorPalette = colorBlindMode ? colorBlindColors : standardColors;
-  const colorLabels = ["Low", "Mod", "High", "Very", "Ext"];
   const riskPercent = uvData.currentUV <= 2 ? 15 : uvData.currentUV <= 5 ? 40 : uvData.currentUV <= 7 ? 85 : 100;
+  const selectedSkin = skinTypes.find((s) => s.id === skinType);
 
   return (
     <>
@@ -236,34 +221,59 @@ export default function ProfilePage() {
           </button>
         </div>
 
-        {/* Skin Type + UV Risk — side by side */}
+        {/* Main 2-col layout */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
 
-          {/* Skin Type Selection */}
-          <div className="bg-white rounded-2xl border border-black/10 p-6 h-full">
-            <h3 className="text-[#0a0a0a] text-[16px]" style={{ fontWeight: 500 }}>Select Your Skin Type</h3>
-            <p className="text-[#717182] text-[14px] mt-1 mb-4">Choose the option that best describes your skin</p>
-            <div className="flex flex-col gap-2">
-              {skinTypes.map((type) => (
-                <button
-                  key={type.id}
-                  onClick={() => setSkinType(type.id)}
-                  className={`w-full text-left px-5 py-3.5 rounded-xl border transition-all cursor-pointer ${
-                    skinType === type.id ? "bg-[#fff7ed] border-[#ff6900]" : "bg-white border-black/10 hover:bg-gray-50"
-                  }`}
+          {/* Left column: Skin Type + General Tips */}
+          <div className="flex flex-col gap-6">
+
+            {/* Skin Type Dropdown */}
+            <div className="bg-white rounded-2xl border border-black/10 p-6">
+              <h3 className="text-[#0a0a0a] text-[16px]" style={{ fontWeight: 500 }}>Select Your Skin Type</h3>
+              <p className="text-[#717182] text-[14px] mt-1 mb-4">Choose the option that best describes your skin</p>
+              <div className="relative">
+                <select
+                  value={skinType}
+                  onChange={(e) => setSkinType(Number(e.target.value))}
+                  className="w-full appearance-none bg-[#fff7ed] border border-[#ff6900] text-[#0a0a0a] text-[14px] font-medium px-4 py-3 pr-10 rounded-xl cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#ff6900]/40"
                 >
-                  <div className="flex items-center gap-2">
-                    {skinType === type.id && <span className="w-2 h-2 rounded-full bg-[#0a0a0a]" />}
-                    <span className="text-[#0a0a0a] text-[14px]" style={{ fontWeight: 500 }}>{type.name}</span>
-                    {skinType === type.id && <CheckCircle size={16} className="text-[#00C950]" />}
-                    <span className="text-[#6a7282] text-[14px] ml-1">{type.desc}</span>
+                  {skinTypes.map((type) => (
+                    <option key={type.id} value={type.id}>
+                      {type.name} — {type.desc}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-[#ff6900] pointer-events-none" />
+              </div>
+              {selectedSkin && (
+                <div className="mt-3 flex items-center gap-2 px-4 py-2.5 bg-[#fff7ed] rounded-xl border border-[#ff6900]/30">
+                  <CheckCircle size={15} className="text-[#00C950] shrink-0" />
+                  <p className="text-[#0a0a0a] text-[13px]">
+                    <span style={{ fontWeight: 600 }}>{selectedSkin.name}</span>
+                    <span className="text-[#6a7282]"> — {selectedSkin.desc}</span>
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* General Sun Safety Tips */}
+            <div className="bg-white rounded-2xl border border-black/10 p-6">
+              <h3 className="text-[#0a0a0a] text-[16px] mb-4" style={{ fontWeight: 500 }}>General Sun Safety Tips</h3>
+              <div className="flex flex-col gap-3">
+                {safetyTips.map((tip) => (
+                  <div key={tip.num} className="flex items-start gap-3">
+                    <div className="w-7 h-7 rounded-full bg-[#ff6900] text-white text-[13px] flex items-center justify-center shrink-0" style={{ fontWeight: 600 }}>{tip.num}</div>
+                    <div>
+                      <p className="text-[#0a0a0a] text-[14px]" style={{ fontWeight: 500 }}>{tip.title}</p>
+                      <p className="text-[#6a7282] text-[13px]">{tip.desc}</p>
+                    </div>
                   </div>
-                </button>
-              ))}
+                ))}
+              </div>
             </div>
           </div>
 
-          {/* UV Exposure Risk */}
+          {/* Right column: UV Exposure Risk */}
           <div className="bg-white rounded-2xl border border-black/10 p-6 h-full">
             <h3 className="text-[#0a0a0a] text-[16px]" style={{ fontWeight: 500 }}>Current UV Exposure Risk</h3>
             <p className="text-[#717182] text-[14px] mt-1 mb-4">Based on current UV index and your skin type</p>
@@ -293,60 +303,6 @@ export default function ProfilePage() {
                 </p>
               </div>
             </div>
-          </div>
-        </div>
-
-        {/* Safety Tips */}
-        <div className="bg-white rounded-2xl border border-black/10 p-6">
-          <h3 className="text-[#0a0a0a] text-[16px] mb-4" style={{ fontWeight: 500 }}>General Sun Safety Tips</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {safetyTips.map((tip) => (
-              <div key={tip.num} className="flex items-start gap-3">
-                <div className="w-7 h-7 rounded-full bg-[#ff6900] text-white text-[13px] flex items-center justify-center shrink-0" style={{ fontWeight: 600 }}>{tip.num}</div>
-                <div>
-                  <p className="text-[#0a0a0a] text-[14px]" style={{ fontWeight: 500 }}>{tip.title}</p>
-                  <p className="text-[#6a7282] text-[13px]">{tip.desc}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Accessibility Settings */}
-        <div className="bg-white rounded-2xl border border-black/10 p-6">
-          <h3 className="text-[#0a0a0a] text-[16px]" style={{ fontWeight: 500 }}>Accessibility Settings</h3>
-          <p className="text-[#717182] text-[14px] mt-1 mb-4">Customize the app for better visibility and usability</p>
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-3">
-              <Eye size={18} className="text-[#4a5565]" />
-              <div>
-                <p className="text-[#0a0a0a] text-[14px]" style={{ fontWeight: 500 }}>Color Blind Mode</p>
-                <p className="text-[#6a7282] text-[13px]">Uses color-blind friendly palette</p>
-              </div>
-            </div>
-            <button
-              onClick={() => setColorBlindMode(!colorBlindMode)}
-              className={`w-11 h-6 rounded-full transition-colors cursor-pointer ${colorBlindMode ? "bg-[#FF6900]" : "bg-gray-300"}`}
-            >
-              <div className={`w-5 h-5 rounded-full bg-white shadow transition-transform ${colorBlindMode ? "translate-x-5.5" : "translate-x-0.5"}`} />
-            </button>
-          </div>
-          <div className="mb-4">
-            <p className="text-[#4a5565] text-[12px] mb-2">{colorBlindMode ? "Color Blind" : "Standard"} Colors</p>
-            <div className="flex gap-0">
-              {colorPalette.map((color, i) => (
-                <div key={i} className="flex-1 flex flex-col items-center">
-                  <div className="w-full h-8 first:rounded-l-lg last:rounded-r-lg" style={{ backgroundColor: color }} />
-                  <span className="text-[11px] text-[#6a7282] mt-1">{colorLabels[i]}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-          <div className="bg-[#eff6ff] rounded-xl px-4 py-3 flex items-start gap-2">
-            <AlertCircle size={16} className="text-[#3B82F6] mt-0.5 shrink-0" />
-            <p className="text-[#1e40af] text-[12px]">
-              This mode uses colors that are easier to distinguish for people with color vision deficiencies, particularly deuteranopia and protanopia (red-green color blindness). The palette uses blue, cyan, orange, pink, and indigo instead of green, yellow, orange, red, and purple.
-            </p>
           </div>
         </div>
       </div>

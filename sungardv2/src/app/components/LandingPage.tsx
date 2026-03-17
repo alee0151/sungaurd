@@ -196,75 +196,65 @@ export default function LandingPage() {
           </div>
         </section>
 
-        {/* HOW IT WORKS */}
+        {/* HOW IT WORKS + WHY IT SLAPS — side by side */}
         <section id="how" className="py-20 bg-white">
           <div className="max-w-[1200px] mx-auto px-6">
-            <div className="text-center mb-14">
-              <p className="text-orange-500 font-bold text-[13px] uppercase tracking-widest mb-2">Super simple</p>
-              <h2 className="text-[36px] md:text-[44px] font-extrabold text-[#101828] tracking-tight">3 steps to safer sun time</h2>
-            </div>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 items-start">
 
-            <div className="grid md:grid-cols-3 gap-6">
-              {[
-                {
-                  step: "01",
-                  emoji: "📲",
-                  color: "from-orange-400 to-pink-500",
-                  bg: "bg-orange-50",
-                  title: "Share your location",
-                  desc: "SunGuard pulls live UV data for wherever you are — beach, park, city, wherever."
-                },
-                {
-                  step: "02",
-                  emoji: "🧬",
-                  color: "from-blue-400 to-violet-500",
-                  bg: "bg-blue-50",
-                  title: "Set your skin type",
-                  desc: "We crunch your skin tone + the UV level to give you advice that actually fits you."
-                },
-                {
-                  step: "03",
-                  emoji: "⏰",
-                  color: "from-green-400 to-teal-500",
-                  bg: "bg-green-50",
-                  title: "Get reminders",
-                  desc: "Set a sunscreen timer and we'll ping you when it's time to reapply. Easy."
-                },
-              ].map((s) => (
-                <div key={s.step} className={`${s.bg} rounded-3xl p-8 relative overflow-hidden`}>
-                  <span className="absolute top-5 right-6 text-[64px] font-extrabold text-black/5 select-none leading-none">{s.step}</span>
-                  <div className={`w-14 h-14 rounded-2xl bg-gradient-to-br ${s.color} flex items-center justify-center text-[26px] mb-5 shadow-md`}>
-                    {s.emoji}
-                  </div>
-                  <h3 className="text-[20px] font-extrabold text-[#101828] mb-2">{s.title}</h3>
-                  <p className="text-gray-600 text-[15px] leading-relaxed">{s.desc}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-        </section>
-
-        {/* FEATURES */}
-        <section id="features" className="py-20 bg-[#fff9f5]">
-          <div className="max-w-[1200px] mx-auto px-6">
-            <div className="flex flex-col lg:flex-row items-center gap-16">
-              <div className="w-full lg:w-[45%] relative">
-                <div className="rounded-[2.5rem] overflow-hidden shadow-2xl aspect-[4/3]">
-                  <ImageWithFallback
-                    src="https://images.unsplash.com/photo-1751821195194-0bbc1caab446?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxwdXR0aW5nJTIwb24lMjBzdW5zY3JlZW58ZW58MXx8fHwxNzczMzg3MzkxfDA&ixlib=rb-4.1.0&q=80&w=1080"
-                    alt="Applying sunscreen"
-                    className="w-full h-full object-cover"
-                  />
+              {/* LEFT — 3 steps */}
+              <div id="features">
+                <p className="text-orange-500 font-bold text-[13px] uppercase tracking-widest mb-2">Super simple</p>
+                <h2 className="text-[32px] md:text-[38px] font-extrabold text-[#101828] tracking-tight mb-10">
+                  3 steps to safer sun time
+                </h2>
+                <div className="flex flex-col gap-5">
+                  {[
+                    {
+                      step: "01",
+                      emoji: "📲",
+                      color: "from-orange-400 to-pink-500",
+                      bg: "bg-orange-50",
+                      title: "Share your location",
+                      desc: "SunGuard pulls live UV data for wherever you are — beach, park, city, wherever."
+                    },
+                    {
+                      step: "02",
+                      emoji: "🧬",
+                      color: "from-blue-400 to-violet-500",
+                      bg: "bg-blue-50",
+                      title: "Set your skin type",
+                      desc: "We crunch your skin tone + the UV level to give you advice that actually fits you."
+                    },
+                    {
+                      step: "03",
+                      emoji: "⏰",
+                      color: "from-green-400 to-teal-500",
+                      bg: "bg-green-50",
+                      title: "Get reminders",
+                      desc: "Set a sunscreen timer and we'll ping you when it's time to reapply. Easy."
+                    },
+                  ].map((s) => (
+                    <div key={s.step} className={`${s.bg} rounded-2xl p-6 relative overflow-hidden flex items-start gap-5`}>
+                      <span className="absolute top-3 right-5 text-[48px] font-extrabold text-black/5 select-none leading-none">{s.step}</span>
+                      <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${s.color} flex items-center justify-center text-[22px] shrink-0 shadow-md`}>
+                        {s.emoji}
+                      </div>
+                      <div>
+                        <h3 className="text-[17px] font-extrabold text-[#101828] mb-1">{s.title}</h3>
+                        <p className="text-gray-600 text-[14px] leading-relaxed">{s.desc}</p>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
 
-              <div className="w-full lg:w-[55%]">
-                <p className="text-orange-500 font-bold text-[13px] uppercase tracking-widest mb-3">Why it slaps</p>
-                <h2 className="text-[36px] md:text-[44px] font-extrabold text-[#101828] tracking-tight mb-8">
+              {/* RIGHT — Why it slaps */}
+              <div>
+                <p className="text-orange-500 font-bold text-[13px] uppercase tracking-widest mb-2">Why it slaps</p>
+                <h2 className="text-[32px] md:text-[38px] font-extrabold text-[#101828] tracking-tight mb-10">
                   Built for people who <br /> actually go outside
                 </h2>
-
-                <div className="flex flex-col gap-5">
+                <div className="flex flex-col gap-4">
                   {[
                     {
                       icon: Activity,
@@ -291,7 +281,7 @@ export default function LandingPage() {
                       desc: "Tap once when you apply sunscreen and we remind you to reapply in 2 hours."
                     },
                   ].map((f, i) => (
-                    <div key={i} className="flex items-start gap-4 p-5 bg-white rounded-2xl border border-gray-100 hover:shadow-md transition-shadow">
+                    <div key={i} className="flex items-start gap-4 p-5 bg-[#fff9f5] rounded-2xl border border-gray-100 hover:shadow-md transition-shadow">
                       <div className={`w-11 h-11 rounded-xl bg-gradient-to-br ${f.grad} flex items-center justify-center shrink-0 shadow-sm`}>
                         <f.icon size={20} className="text-white" />
                       </div>
@@ -303,12 +293,13 @@ export default function LandingPage() {
                   ))}
                 </div>
               </div>
+
             </div>
           </div>
         </section>
 
         {/* SOCIAL PROOF */}
-        <section className="py-16 bg-white">
+        <section className="py-16 bg-[#fff9f5]">
           <div className="max-w-[1200px] mx-auto px-6">
             <div className="text-center mb-10">
               <p className="text-orange-500 font-bold text-[13px] uppercase tracking-widest mb-2">People are loving it</p>
@@ -320,7 +311,7 @@ export default function LandingPage() {
                 { quote: "The UV map is so sick. I check it before every surf session.", name: "Jake, 19 🏄" },
                 { quote: "Finally an app that doesn't talk to me like I'm 50. The reminders are so helpful.", name: "Priya, 22 ✨" },
               ].map((t, i) => (
-                <div key={i} className="bg-[#fff9f5] border border-orange-100 rounded-3xl p-7">
+                <div key={i} className="bg-white border border-orange-100 rounded-3xl p-7">
                   <p className="text-[32px] text-orange-400 leading-none mb-2">&ldquo;</p>
                   <p className="text-gray-700 text-[15px] leading-relaxed mb-5">{t.quote}</p>
                   <p className="text-[13px] font-bold text-gray-500">{t.name}</p>
@@ -331,7 +322,7 @@ export default function LandingPage() {
         </section>
 
         {/* FAQ */}
-        <section id="faq" className="py-20 bg-[#fff9f5]">
+        <section id="faq" className="py-20 bg-white">
           <div className="max-w-[760px] mx-auto px-6">
             <div className="text-center mb-12">
               <p className="text-orange-500 font-bold text-[13px] uppercase tracking-widest mb-2">Got questions?</p>
@@ -356,7 +347,7 @@ export default function LandingPage() {
                   a: "Live data is fetched fresh every time and cached for 60 minutes to keep it fast without hammering the API."
                 },
               ].map((item, i) => (
-                <div key={i} className="bg-white border border-gray-100 rounded-2xl px-6 py-5">
+                <div key={i} className="bg-[#fff9f5] border border-gray-100 rounded-2xl px-6 py-5">
                   <p className="text-[15px] font-extrabold text-[#101828] mb-1.5">{item.q}</p>
                   <p className="text-gray-500 text-[14px] leading-relaxed">{item.a}</p>
                 </div>

@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router";
-import { Sun, Shield, Activity, Bell, ChevronRight, Zap, LogOut, User, MapPin, Smile, Clock } from "lucide-react";
+import { Sun, Shield, Activity, Bell, ChevronRight, Zap, LogOut, User, MapPin, Smile } from "lucide-react";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
 
 export default function LandingPage() {
@@ -27,10 +27,9 @@ export default function LandingPage() {
   return (
     <div className="min-h-screen bg-[#fff9f5] flex flex-col font-sans">
 
-      {/* ── HEADER ── */}
+      {/* HEADER */}
       <header className="bg-white/80 backdrop-blur-md sticky top-0 z-50 border-b border-orange-100">
         <div className="max-w-[1200px] mx-auto px-6 h-16 flex items-center justify-between">
-          {/* Logo */}
           <div className="flex items-center gap-2.5">
             <div
               className="w-9 h-9 rounded-full flex items-center justify-center shadow-sm"
@@ -41,14 +40,12 @@ export default function LandingPage() {
             <span className="text-[#101828] text-[20px] font-extrabold tracking-tight">SunGuard</span>
           </div>
 
-          {/* Nav */}
           <nav className="hidden md:flex items-center gap-7">
             <a href="#how" className="text-gray-500 hover:text-orange-500 font-medium text-[15px] transition-colors">How it works</a>
             <a href="#features" className="text-gray-500 hover:text-orange-500 font-medium text-[15px] transition-colors">Features</a>
             <a href="#faq" className="text-gray-500 hover:text-orange-500 font-medium text-[15px] transition-colors">FAQ</a>
           </nav>
 
-          {/* Actions */}
           <div className="flex items-center gap-2">
             {isLoggedIn ? (
               <>
@@ -78,7 +75,7 @@ export default function LandingPage() {
                   Log in
                 </Link>
                 <Link to="/signup" className="bg-[#FF6900] hover:bg-orange-600 text-white px-5 py-2 rounded-full font-bold text-[14px] transition-colors shadow-md">
-                  Get started →
+                  Get started &rarr;
                 </Link>
               </>
             )}
@@ -88,9 +85,8 @@ export default function LandingPage() {
 
       <main className="flex-grow">
 
-        {/* ── HERO ── */}
+        {/* HERO */}
         <section className="relative overflow-hidden pt-16 pb-24">
-          {/* Background blobs */}
           <div className="absolute top-[-80px] right-[-120px] w-[500px] h-[500px] rounded-full opacity-20 blur-3xl pointer-events-none"
             style={{ background: "radial-gradient(circle, #FF6900 0%, #f63b9a 100%)" }} />
           <div className="absolute bottom-[-60px] left-[-80px] w-[350px] h-[350px] rounded-full opacity-15 blur-3xl pointer-events-none"
@@ -101,31 +97,29 @@ export default function LandingPage() {
 
               {/* Left copy */}
               <div className="flex-1 max-w-[580px]">
-                {/* Pill badge */}
                 <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-orange-100 text-orange-600 font-bold text-[13px] mb-6 border border-orange-200">
-                  <span>\u2600\ufe0f</span> Real-time UV for your exact location
+                  <span>☀️</span> Real-time UV for your exact location
                 </div>
 
                 <h1 className="text-[52px] md:text-[68px] font-extrabold text-[#101828] leading-[1.05] tracking-tight mb-5">
-                  Don't get <br />
+                  Don&apos;t get <br />
                   <span className="text-transparent bg-clip-text"
                     style={{ backgroundImage: "linear-gradient(90deg, #FF6900, #f63b9a)" }}>
-                    fried \ud83d\udd25
+                    fried 🔥
                   </span>
                 </h1>
 
                 <p className="text-[18px] text-gray-600 mb-8 leading-relaxed">
-                  SunGuard tells you the <strong>live UV level</strong> wherever you are, 
-                  reminds you to reapply sunscreen, and keeps your skin healthy — 
+                  SunGuard tells you the <strong>live UV level</strong> wherever you are,
+                  reminds you to reapply sunscreen, and keeps your skin healthy &mdash;
                   so you can be outside longer, worry-free.
                 </p>
 
-                {/* Stats strip */}
                 <div className="flex flex-wrap gap-6 mb-8">
                   {[
-                    { emoji: "\ud83c\udf1e", label: "Live UV Index" },
-                    { emoji: "\ud83d\udccd", label: "Your exact location" },
-                    { emoji: "\u23f0", label: "Reapply reminders" },
+                    { emoji: "🌞", label: "Live UV Index" },
+                    { emoji: "📍", label: "Your exact location" },
+                    { emoji: "⏰", label: "Reapply reminders" },
                   ].map((s) => (
                     <div key={s.label} className="flex items-center gap-2">
                       <span className="text-[20px]">{s.emoji}</span>
@@ -134,7 +128,6 @@ export default function LandingPage() {
                   ))}
                 </div>
 
-                {/* CTA buttons */}
                 <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
                   {isLoggedIn ? (
                     <>
@@ -173,10 +166,10 @@ export default function LandingPage() {
 
                 {isLoggedIn && (
                   <div className="mt-6 inline-flex items-center gap-3 bg-green-50 border border-green-200 rounded-2xl px-5 py-3">
-                    <span className="text-[22px]">\ud83d\udc4b</span>
+                    <span className="text-[22px]">👋</span>
                     <div>
-                      <p className="text-green-800 text-[13px] font-bold">Hey {username}, you're back!</p>
-                      <p className="text-green-600 text-[12px]">Check today's UV levels in My Sun Check.</p>
+                      <p className="text-green-800 text-[13px] font-bold">Hey {username}, you&apos;re back!</p>
+                      <p className="text-green-600 text-[12px]">Check today&apos;s UV levels in My Sun Check.</p>
                     </div>
                   </div>
                 )}
@@ -199,20 +192,20 @@ export default function LandingPage() {
                   </div>
                   <div>
                     <p className="text-[11px] text-gray-400 font-medium">Right now</p>
-                    <p className="text-[15px] font-extrabold text-[#101828]">UV 8 \u2014 Very High</p>
+                    <p className="text-[15px] font-extrabold text-[#101828]">UV 8 &mdash; Very High</p>
                   </div>
                 </div>
                 {/* Floating reminder badge */}
                 <div className="absolute -top-4 -right-4 bg-white rounded-2xl shadow-xl px-4 py-2.5 flex items-center gap-2 border border-pink-100">
                   <Bell size={16} className="text-pink-500" />
-                  <p className="text-[13px] font-bold text-[#101828]">Reapply sunscreen \u26a0\ufe0f</p>
+                  <p className="text-[13px] font-bold text-[#101828]">Reapply sunscreen ⚠️</p>
                 </div>
               </div>
             </div>
           </div>
         </section>
 
-        {/* ── HOW IT WORKS ── */}
+        {/* HOW IT WORKS */}
         <section id="how" className="py-20 bg-white">
           <div className="max-w-[1200px] mx-auto px-6">
             <div className="text-center mb-14">
@@ -224,7 +217,7 @@ export default function LandingPage() {
               {[
                 {
                   step: "01",
-                  emoji: "\ud83d\udcf2",
+                  emoji: "📲",
                   color: "from-orange-400 to-pink-500",
                   bg: "bg-orange-50",
                   title: "Share your location",
@@ -232,7 +225,7 @@ export default function LandingPage() {
                 },
                 {
                   step: "02",
-                  emoji: "\ud83e\uddec",
+                  emoji: "🧬",
                   color: "from-blue-400 to-violet-500",
                   bg: "bg-blue-50",
                   title: "Set your skin type",
@@ -240,7 +233,7 @@ export default function LandingPage() {
                 },
                 {
                   step: "03",
-                  emoji: "\u23f0",
+                  emoji: "⏰",
                   color: "from-green-400 to-teal-500",
                   bg: "bg-green-50",
                   title: "Get reminders",
@@ -260,12 +253,10 @@ export default function LandingPage() {
           </div>
         </section>
 
-        {/* ── FEATURES ── */}
+        {/* FEATURES */}
         <section id="features" className="py-20 bg-[#fff9f5]">
           <div className="max-w-[1200px] mx-auto px-6">
             <div className="flex flex-col lg:flex-row items-center gap-16">
-
-              {/* Image */}
               <div className="w-full lg:w-[45%] relative">
                 <div className="rounded-[2.5rem] overflow-hidden shadow-2xl aspect-[4/3]">
                   <ImageWithFallback
@@ -276,7 +267,6 @@ export default function LandingPage() {
                 </div>
               </div>
 
-              {/* Feature list */}
               <div className="w-full lg:w-[55%]">
                 <p className="text-orange-500 font-bold text-[13px] uppercase tracking-widest mb-3">Why it slaps</p>
                 <h2 className="text-[36px] md:text-[44px] font-extrabold text-[#101828] tracking-tight mb-8">
@@ -326,7 +316,7 @@ export default function LandingPage() {
           </div>
         </section>
 
-        {/* ── SOCIAL PROOF ── */}
+        {/* SOCIAL PROOF */}
         <section className="py-16 bg-white">
           <div className="max-w-[1200px] mx-auto px-6">
             <div className="text-center mb-10">
@@ -335,12 +325,12 @@ export default function LandingPage() {
             </div>
             <div className="grid md:grid-cols-3 gap-6">
               {[
-                { quote: "I literally got a sunburn every summer before this app. Now I actually reapply.", name: "Mia, 21 \ud83c\udde6\ud83c\uddfa" },
-                { quote: "The UV map is so sick. I check it before every surf session.", name: "Jake, 19 \ud83c\udfc4" },
-                { quote: "Finally an app that doesn't talk to me like I'm 50. The reminders are so helpful.", name: "Priya, 22 \u2728" },
+                { quote: "I literally got a sunburn every summer before this app. Now I actually reapply.", name: "Mia, 21 🇦🇺" },
+                { quote: "The UV map is so sick. I check it before every surf session.", name: "Jake, 19 🏄" },
+                { quote: "Finally an app that doesn't talk to me like I'm 50. The reminders are so helpful.", name: "Priya, 22 ✨" },
               ].map((t, i) => (
                 <div key={i} className="bg-[#fff9f5] border border-orange-100 rounded-3xl p-7">
-                  <p className="text-[32px] text-orange-400 leading-none mb-2">\u201c</p>
+                  <p className="text-[32px] text-orange-400 leading-none mb-2">&ldquo;</p>
                   <p className="text-gray-700 text-[15px] leading-relaxed mb-5">{t.quote}</p>
                   <p className="text-[13px] font-bold text-gray-500">{t.name}</p>
                 </div>
@@ -349,7 +339,7 @@ export default function LandingPage() {
           </div>
         </section>
 
-        {/* ── FAQ ── */}
+        {/* FAQ */}
         <section id="faq" className="py-20 bg-[#fff9f5]">
           <div className="max-w-[760px] mx-auto px-6">
             <div className="text-center mb-12">
@@ -384,13 +374,13 @@ export default function LandingPage() {
           </div>
         </section>
 
-        {/* ── FINAL CTA ── */}
+        {/* FINAL CTA */}
         <section className="py-24 relative overflow-hidden">
           <div className="absolute inset-0 z-0" style={{ backgroundImage: "linear-gradient(135deg, #FF6900 0%, #f63b9a 60%, #9810FA 100%)" }} />
           <div className="max-w-[700px] mx-auto px-6 relative z-10 text-center">
             {isLoggedIn ? (
               <>
-                <p className="text-white/80 text-[14px] font-bold uppercase tracking-widest mb-4">You're already in \ud83e\udd19</p>
+                <p className="text-white/80 text-[14px] font-bold uppercase tracking-widest mb-4">You&apos;re already in 🤙</p>
                 <h2 className="text-[42px] md:text-[52px] font-extrabold text-white mb-5 leading-tight">
                   Hey {username}, <br />go check your UV
                 </h2>
@@ -405,9 +395,9 @@ export default function LandingPage() {
               </>
             ) : (
               <>
-                <p className="text-white/80 text-[14px] font-bold uppercase tracking-widest mb-4">It's free, always</p>
+                <p className="text-white/80 text-[14px] font-bold uppercase tracking-widest mb-4">It&apos;s free, always</p>
                 <h2 className="text-[42px] md:text-[52px] font-extrabold text-white mb-5 leading-tight">
-                  Stop guessing. <br />Start checking. \u2600\ufe0f
+                  Stop guessing. <br />Start checking. ☀️
                 </h2>
                 <p className="text-white/80 text-[18px] mb-10">Takes 30 seconds to sign up. Your skin will thank you.</p>
                 <Link
@@ -423,7 +413,7 @@ export default function LandingPage() {
         </section>
       </main>
 
-      {/* ── FOOTER ── */}
+      {/* FOOTER */}
       <footer className="bg-[#0f0f0f] text-white py-10">
         <div className="max-w-[1200px] mx-auto px-6 flex flex-col md:flex-row items-center justify-between gap-6">
           <div className="flex items-center gap-2.5">
@@ -431,7 +421,7 @@ export default function LandingPage() {
             <span className="text-[18px] font-extrabold tracking-tight">SunGuard</span>
           </div>
           <div className="text-gray-500 text-[13px]">
-            \u00a9 {new Date().getFullYear()} SunGuard. Made with \u2615 for sun-lovers.
+            &copy; {new Date().getFullYear()} SunGuard. Made with ☕ for sun-lovers.
           </div>
           <div className="flex gap-6 text-[13px] text-gray-500">
             <a href="#" className="hover:text-white transition-colors">Privacy</a>

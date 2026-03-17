@@ -1,8 +1,7 @@
 import { useState, useRef } from "react";
-import { CheckCircle, AlertCircle, Eye, FileText, X, Download, Sun, Share2, Printer } from "lucide-react";
+import { CheckCircle, AlertCircle, Eye, FileText, X, Sun, Share2, Printer } from "lucide-react";
 import { useAppContext } from "./Layout";
 
-// US3.1 - Skin type data
 const skinTypes = [
   { id: 1, name: "Type 1: Very Fair", desc: "Always burns, never tans" },
   { id: 2, name: "Type 2: Fair", desc: "Usually burns, tans minimally" },
@@ -50,63 +49,22 @@ const safetyTips = [
   { num: 4, title: "Check Regularly", desc: "Monitor skin for any changes" },
 ];
 
-// ---------- helpers ----------
-function buildReportText(
-  username: string,
-  skinTypeName: string,
-  uv: number,
-  riskLevel: string,
-  advice: ReturnType<typeof getAdvice>,
-  actionText: string,
-  dateStr: string,
-  timeStr: string
+function buildShareText(
+  username: string, skinTypeName: string, uv: number, riskLevel: string,
+  advice: ReturnType<typeof getAdvice>, actionText: string, dateStr: string, timeStr: string
 ) {
   return [
-    "============================================",
-    "         SUNGUARD — UV PROTECTION REPORT    ",
-    "============================================",
-    `Generated for : ${username || "You"}`,
-    `Skin Type     : ${skinTypeName}`,
-    `Date          : ${dateStr}`,
-    `Time          : ${timeStr}`,
+    "SunGuard — UV Protection Report",
+    `For: ${username || "You"} | Skin: ${skinTypeName}`,
+    `Date: ${dateStr} ${timeStr}`,
     "",
-    "--------------------------------------------",
-    "UV INDEX & RISK",
-    "--------------------------------------------",
-    `Current UV Index : ${uv}`,
-    `Your Risk Level  : ${riskLevel}`,
+    `UV Index: ${uv} | Risk: ${riskLevel}`,
     "",
-    "--------------------------------------------",
-    "GENERAL ADVICE",
-    "--------------------------------------------",
-    advice.general,
+    `Advice: ${advice.general}`,
+    `UV Note: ${advice.uvAdvice}`,
+    `Action: ${actionText}`,
     "",
-    "--------------------------------------------",
-    "UV-SPECIFIC ADVICE",
-    "--------------------------------------------",
-    advice.uvAdvice,
-    "",
-    "--------------------------------------------",
-    "RISK SUMMARY",
-    "--------------------------------------------",
-    advice.riskText,
-    "",
-    "--------------------------------------------",
-    "RECOMMENDED ACTION",
-    "--------------------------------------------",
-    actionText,
-    "",
-    "--------------------------------------------",
-    "SUN SAFETY TIPS",
-    "--------------------------------------------",
-    ...safetyTips.map((t) => `${t.num}. ${t.title}: ${t.desc}`),
-    "",
-    "============================================",
-    "Disclaimer: This report is personalised based",
-    "on your skin type and the current UV index.",
-    "Always consult a health professional for",
-    "medical advice.",
-    "============================================",
+    "Disclaimer: Always consult a health professional for medical advice.",
   ].join("\n");
 }
 
@@ -136,19 +94,7 @@ function UVReportModal({
       ? "Apply SPF 30+ sunscreen. Wear protective clothing during extended outdoor activities."
       : "Apply SPF 50+ sunscreen. Seek shade during peak hours. Wear protective clothing and hat.";
 
-  // --- Download as .txt ---
-  const handleDownload = () => {
-    const text = buildReportText(username, skinTypeName, uvData.currentUV, risk.level, advice, actionText, dateStr, timeStr);
-    const blob = new Blob([text], { type: "text/plain" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `SunGuard_UV_Report_${now.toISOString().slice(0, 10)}.txt`;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-
-  // --- Print to PDF ---
+  // --- Print / Save as PDF ---
   const handlePrint = () => {
     if (!printRef.current) return;
     const printContents = printRef.current.innerHTML;
@@ -167,14 +113,11 @@ function UVReportModal({
     setTimeout(() => { win.print(); win.close(); }, 400);
   };
 
-  // --- Share ---
+  // --- Share / copy ---
   const handleShare = async () => {
-    const text = buildReportText(username, skinTypeName, uvData.currentUV, risk.level, advice, actionText, dateStr, timeStr);
+    const text = buildShareText(username, skinTypeName, uvData.currentUV, risk.level, advice, actionText, dateStr, timeStr);
     if (navigator.share) {
-      try {
-        await navigator.share({ title: "My SunGuard UV Report", text });
-        setShareStatus("shared");
-      } catch {}
+      try { await navigator.share({ title: "My SunGuard UV Report", text }); setShareStatus("shared"); } catch {}
     } else {
       await navigator.clipboard.writeText(text);
       setShareStatus("copied");
@@ -192,7 +135,6 @@ function UVReportModal({
 
         {/* Scrollable report area */}
         <div className="overflow-y-auto flex-1" ref={printRef}>
-          {/* Gradient header */}
           <div
             className="rounded-t-3xl px-8 pt-8 pb-6 relative"
             style={{ backgroundImage: "linear-gradient(135deg, #FF6900 0%, #f63b9a 100%)" }}
@@ -232,9 +174,7 @@ function UVReportModal({
             </div>
           </div>
 
-          {/* Body */}
           <div className="px-8 py-6 flex flex-col gap-5">
-            {/* UV + Risk */}
             <div className="grid grid-cols-2 gap-4">
               <div className="bg-[#fff7ed] rounded-2xl p-5 flex flex-col items-center">
                 <p className="text-[#9f2d00] text-[12px] font-semibold uppercase tracking-wide mb-1">Current UV Index</p>
@@ -246,7 +186,6 @@ function UVReportModal({
               </div>
             </div>
 
-            {/* Risk bar */}
             <div>
               <p className="text-[#4a5565] text-[13px] font-semibold mb-2">Exposure Risk</p>
               <div className="w-full h-3 bg-gray-100 rounded-full overflow-hidden">
@@ -254,7 +193,6 @@ function UVReportModal({
               </div>
             </div>
 
-            {/* General Advice */}
             <div className="bg-[#eff6ff] rounded-2xl p-5">
               <div className="flex items-center gap-2 mb-2">
                 <AlertCircle size={16} className="text-[#3B82F6]" />
@@ -263,7 +201,6 @@ function UVReportModal({
               <p className="text-[#1e40af] text-[14px] leading-relaxed">{advice.general}</p>
             </div>
 
-            {/* UV + Risk cards */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="bg-[#fff7ed] rounded-2xl p-4">
                 <p className="text-[#9f2d00] text-[13px] font-bold mb-1">UV-Specific Advice</p>
@@ -275,7 +212,6 @@ function UVReportModal({
               </div>
             </div>
 
-            {/* Recommended Action */}
             <div className="bg-[#f0fdf4] border border-[#bbf7d0] rounded-2xl px-5 py-4 flex items-start gap-3">
               <CheckCircle size={18} className="text-[#16a34a] shrink-0 mt-0.5" />
               <div>
@@ -284,15 +220,12 @@ function UVReportModal({
               </div>
             </div>
 
-            {/* Safety Tips */}
             <div>
               <p className="text-[#0a0a0a] text-[15px] font-bold mb-3">Sun Safety Tips</p>
               <div className="grid grid-cols-2 gap-3">
                 {safetyTips.map((tip) => (
                   <div key={tip.num} className="flex items-start gap-3 bg-[#fff9f5] rounded-xl p-4">
-                    <div className="w-7 h-7 rounded-full bg-[#ff6900] text-white text-[13px] flex items-center justify-center shrink-0 font-bold">
-                      {tip.num}
-                    </div>
+                    <div className="w-7 h-7 rounded-full bg-[#ff6900] text-white text-[13px] flex items-center justify-center shrink-0 font-bold">{tip.num}</div>
                     <div>
                       <p className="text-[#0a0a0a] text-[13px] font-semibold">{tip.title}</p>
                       <p className="text-[#6a7282] text-[12px]">{tip.desc}</p>
@@ -308,14 +241,8 @@ function UVReportModal({
           </div>
         </div>
 
-        {/* Sticky action bar */}
+        {/* Sticky action bar — Save as PDF + Share only */}
         <div className="border-t border-gray-100 px-8 py-4 flex items-center gap-3 bg-white rounded-b-3xl shrink-0">
-          <button
-            onClick={handleDownload}
-            className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-[#0a0a0a] hover:bg-[#222] text-white text-[13px] font-bold transition-all cursor-pointer"
-          >
-            <Download size={15} /> Download .txt
-          </button>
           <button
             onClick={handlePrint}
             className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-[#eff6ff] hover:bg-[#dbeafe] text-[#1e40af] text-[13px] font-bold transition-all cursor-pointer"

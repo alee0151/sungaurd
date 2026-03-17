@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { Link } from "react-router";
 import {
   Sun, Activity, Bell, ChevronRight, Zap, User, MapPin,
-  Smile, CheckCircle, TrendingUp, Droplets, ShieldCheck, Clock,
+  Smile, CheckCircle, TrendingUp, Droplets, ShieldCheck,
 } from "lucide-react";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
 
@@ -17,12 +17,11 @@ function getUVRisk(uv: number) {
 function getRecommendation(uv: number): string {
   if (uv <= 2)  return "SPF 15+ if outdoors. No special precautions needed.";
   if (uv <= 5)  return "SPF 30+, wear a hat during midday hours.";
-  if (uv <= 7)  return "SPF 50+, seek shade between 10am\u20134pm.";
+  if (uv <= 7)  return "SPF 50+, seek shade between 10am–4pm.";
   if (uv <= 10) return "SPF 50+, minimise outdoor exposure. Wear protective clothing.";
   return               "Avoid being outside. SPF 50+ and full cover essential.";
 }
 
-/** Returns how many Application logs were saved today from localStorage cache */
 function getTodayAppCount(): number {
   try {
     const raw = localStorage.getItem("sunguard_logs_cache");
@@ -33,7 +32,6 @@ function getTodayAppCount(): number {
   } catch { return 0; }
 }
 
-/** Returns seconds remaining on the active timer, or null if no timer running */
 function getTimerSecondsRemaining(): number | null {
   try {
     const start    = JSON.parse(localStorage.getItem("sunguard_timer_start") ?? "null") as number | null;
@@ -50,8 +48,6 @@ export default function LandingPage() {
   const [uvIndex, setUvIndex]         = useState<number | null>(null);
   const [location, setLocation]       = useState("Detecting...");
   const [uvLoading, setUvLoading]     = useState(false);
-
-  // Dynamic badge state
   const [appCountToday, setAppCountToday]           = useState(0);
   const [timerSecsRemaining, setTimerSecsRemaining] = useState<number | null>(null);
 
@@ -65,15 +61,9 @@ export default function LandingPage() {
       setUsername(storedUser);
       fetchUVForUser();
     }
-
-    // Read today's application count and timer from localStorage
     setAppCountToday(getTodayAppCount());
     setTimerSecsRemaining(getTimerSecondsRemaining());
-
-    // Tick the timer every second so the badge stays live
-    const tick = setInterval(() => {
-      setTimerSecsRemaining(getTimerSecondsRemaining());
-    }, 1000);
+    const tick = setInterval(() => setTimerSecsRemaining(getTimerSecondsRemaining()), 1000);
     return () => clearInterval(tick);
   }, []);
 
@@ -131,51 +121,46 @@ export default function LandingPage() {
   const risk           = uvIndex !== null ? getUVRisk(uvIndex) : null;
   const recommendation = uvIndex !== null ? getRecommendation(uvIndex) : null;
 
-  // ── Reminder badge logic ────────────────────────────────────────────
-  const timerActive   = timerSecsRemaining !== null && timerSecsRemaining > 0;
-  const timerExpired  = timerSecsRemaining === 0;
-  const timerMins     = timerActive ? Math.ceil(timerSecsRemaining! / 60) : 0;
+  // Reminder badge logic
+  const timerActive  = timerSecsRemaining !== null && timerSecsRemaining > 0;
+  const timerExpired = timerSecsRemaining === 0;
+  const timerMins    = timerActive ? Math.ceil(timerSecsRemaining! / 60) : 0;
 
   let reminderIcon: React.ReactNode;
   let reminderText: string;
-  let reminderBg:   string;
+  let reminderBg: string;
   let reminderBorder: string;
   let reminderTextColor: string;
 
   if (timerExpired) {
-    // Timer ran out — urgent reapply
-    reminderIcon       = <Bell size={15} className="text-red-500 animate-pulse" />;
-    reminderText       = "Reapply sunscreen now! ⚠️";
-    reminderBg         = "#fff1f2";
-    reminderBorder     = "#fecdd3";
-    reminderTextColor  = "#be123c";
+    reminderIcon      = <Bell size={15} className="text-red-500 animate-pulse" />;
+    reminderText      = "Reapply sunscreen now! ⚠️";
+    reminderBg        = "#fff1f2";
+    reminderBorder    = "#fecdd3";
+    reminderTextColor = "#be123c";
   } else if (timerActive && appCountToday > 0) {
-    // Protected — show time remaining
     const h = Math.floor(timerMins / 60);
     const m = timerMins % 60;
     const timeStr = h > 0 ? `${h}h ${m}m` : `${m}m`;
-    reminderIcon       = <ShieldCheck size={15} className="text-green-500" />;
-    reminderText       = `Protected · reapply in ${timeStr}`;
-    reminderBg         = "#f0fdf4";
-    reminderBorder     = "#bbf7d0";
-    reminderTextColor  = "#15803d";
+    reminderIcon      = <ShieldCheck size={15} className="text-green-500" />;
+    reminderText      = `Protected · reapply in ${timeStr}`;
+    reminderBg        = "#f0fdf4";
+    reminderBorder    = "#bbf7d0";
+    reminderTextColor = "#15803d";
   } else if (appCountToday > 0) {
-    // Applied at least once today but timer not running
-    reminderIcon       = <Droplets size={15} className="text-blue-500" />;
-    reminderText       = `Applied ${appCountToday}× today`;
-    reminderBg         = "#eff6ff";
-    reminderBorder     = "#bfdbfe";
-    reminderTextColor  = "#1d4ed8";
+    reminderIcon      = <Droplets size={15} className="text-blue-500" />;
+    reminderText      = `Applied ${appCountToday}× today`;
+    reminderBg        = "#eff6ff";
+    reminderBorder    = "#bfdbfe";
+    reminderTextColor = "#1d4ed8";
   } else {
-    // No application today
-    reminderIcon       = <Bell size={15} className="text-pink-500" />;
-    reminderText       = "Reapply sunscreen ⚠️";
-    reminderBg         = "white";
-    reminderBorder     = "#fce7f3";
-    reminderTextColor  = "#101828";
+    reminderIcon      = <Bell size={15} className="text-pink-500" />;
+    reminderText      = "Reapply sunscreen ⚠️";
+    reminderBg        = "white";
+    reminderBorder    = "#fce7f3";
+    reminderTextColor = "#101828";
   }
 
-  // ── UV badge gradient ───────────────────────────────────────────────
   const uvBadgeGrad = risk
     ? `linear-gradient(135deg, ${risk.gradFrom}, ${risk.gradTo})`
     : "linear-gradient(135deg, #FF6900, #f63b9a)";
@@ -258,7 +243,7 @@ export default function LandingPage() {
                   >
                     <Sun size={22} className="text-white mb-0.5" />
                     <span className="text-white text-[20px] font-extrabold leading-none">
-                      {uvLoading ? "\u2026" : uvIndex ?? "\u2014"}
+                      {uvLoading ? "…" : uvIndex ?? "—"}
                     </span>
                   </div>
                   <div>
@@ -278,7 +263,7 @@ export default function LandingPage() {
                     <CheckCircle size={22} className="text-blue-500" />
                   </div>
                   <div>
-                    <p className="text-[12px] font-semibold uppercase tracking-widest text-blue-500 mb-1">Today\u2019s Recommendation</p>
+                    <p className="text-[12px] font-semibold uppercase tracking-widest text-blue-500 mb-1">Today's Recommendation</p>
                     <p className="text-[#101828] text-[15px] font-semibold leading-snug">
                       {uvLoading ? "Fetching advice..." : recommendation ?? "Sign in to get personalised advice."}
                     </p>
@@ -295,13 +280,13 @@ export default function LandingPage() {
               {/* Left copy */}
               <div className="flex-1 max-w-[580px]">
                 <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-orange-100 text-orange-600 font-bold text-[13px] mb-6 border border-orange-200">
-                  <span>\u2600\ufe0f</span> Real-time UV for your exact location
+                  ☀️ Real-time UV for your exact location
                 </div>
 
                 <h1 className="text-[52px] md:text-[68px] font-extrabold text-[#101828] leading-[1.05] tracking-tight mb-5">
                   Don&apos;t get <br />
                   <span className="text-transparent bg-clip-text" style={{ backgroundImage: "linear-gradient(90deg, #FF6900, #f63b9a)" }}>
-                    fried \ud83d\udd25
+                    fried 🔥
                   </span>
                 </h1>
 
@@ -313,9 +298,9 @@ export default function LandingPage() {
 
                 <div className="flex flex-wrap gap-6 mb-8">
                   {[
-                    { emoji: "\ud83c\udf1e", label: "Live UV Index" },
-                    { emoji: "\ud83d\udccd", label: "Your exact location" },
-                    { emoji: "\u23f0",       label: "Reapply reminders" },
+                    { emoji: "🌞", label: "Live UV Index" },
+                    { emoji: "📍", label: "Your exact location" },
+                    { emoji: "⏰", label: "Reapply reminders" },
                   ].map((s) => (
                     <div key={s.label} className="flex items-center gap-2">
                       <span className="text-[20px]">{s.emoji}</span>
@@ -354,7 +339,7 @@ export default function LandingPage() {
 
                 {isLoggedIn && (
                   <div className="mt-6 inline-flex items-center gap-3 bg-green-50 border border-green-200 rounded-2xl px-5 py-3">
-                    <span className="text-[22px]">\ud83d\udc4b</span>
+                    <span className="text-[22px]">👋</span>
                     <div>
                       <p className="text-green-800 text-[13px] font-bold">Hey {username}, you&apos;re back!</p>
                       <p className="text-green-600 text-[12px]">Check today&apos;s UV levels in My Sun Check.</p>
@@ -363,7 +348,7 @@ export default function LandingPage() {
                 )}
               </div>
 
-              {/* Right image with DYNAMIC floating badges */}
+              {/* Right image with dynamic floating badges */}
               <div className="flex-1 w-full max-w-[520px] relative">
                 <div className="rounded-[2.5rem] overflow-hidden shadow-2xl aspect-[4/3]">
                   <ImageWithFallback
@@ -373,9 +358,11 @@ export default function LandingPage() {
                   />
                 </div>
 
-                {/* Bottom-left: DYNAMIC UV badge */}
-                <div className="absolute -bottom-4 -left-4 bg-white rounded-2xl shadow-xl px-5 py-3 flex items-center gap-3 border"
-                  style={{ borderColor: risk?.border ?? "#fed7aa" }}>
+                {/* Bottom-left: dynamic UV badge */}
+                <div
+                  className="absolute -bottom-4 -left-4 bg-white rounded-2xl shadow-xl px-5 py-3 flex items-center gap-3 border"
+                  style={{ borderColor: risk?.border ?? "#fed7aa" }}
+                >
                   <div
                     className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
                     style={{ backgroundImage: uvBadgeGrad }}
@@ -391,12 +378,12 @@ export default function LandingPage() {
                         UV {uvIndex} &mdash; {risk?.level}
                       </p>
                     ) : (
-                      <p className="text-[15px] font-extrabold text-[#101828]">UV &mdash; &mdash;</p>
+                      <p className="text-[15px] font-extrabold text-[#101828]">UV — —</p>
                     )}
                   </div>
                 </div>
 
-                {/* Top-right: DYNAMIC reminder / applied badge */}
+                {/* Top-right: dynamic reminder badge */}
                 <div
                   className="absolute -top-4 -right-4 rounded-2xl shadow-xl px-4 py-2.5 flex items-center gap-2 border transition-all"
                   style={{ backgroundColor: reminderBg, borderColor: reminderBorder }}
@@ -405,7 +392,6 @@ export default function LandingPage() {
                   <p className="text-[13px] font-bold" style={{ color: reminderTextColor }}>
                     {reminderText}
                   </p>
-                  {/* Pulsing dot when timer is active */}
                   {timerActive && (
                     <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse ml-0.5" />
                   )}
@@ -424,9 +410,9 @@ export default function LandingPage() {
                 <h2 className="text-[32px] md:text-[38px] font-extrabold text-[#101828] tracking-tight mb-10">3 steps to safer sun time</h2>
                 <div className="flex flex-col gap-5">
                   {[
-                    { step: "01", emoji: "\ud83d\udcf2", color: "from-orange-400 to-pink-500", bg: "bg-orange-50", title: "Share your location", desc: "SunGuard pulls live UV data for wherever you are \u2014 beach, park, city, wherever." },
-                    { step: "02", emoji: "\ud83e\uddec", color: "from-blue-400 to-violet-500", bg: "bg-blue-50",   title: "Set your skin type",  desc: "We crunch your skin tone + the UV level to give you advice that actually fits you." },
-                    { step: "03", emoji: "\u23f0",       color: "from-green-400 to-teal-500",  bg: "bg-green-50",  title: "Get reminders",       desc: "Set a sunscreen timer and we'll ping you when it's time to reapply. Easy." },
+                    { step: "01", emoji: "📲", color: "from-orange-400 to-pink-500", bg: "bg-orange-50", title: "Share your location", desc: "SunGuard pulls live UV data for wherever you are — beach, park, city, wherever." },
+                    { step: "02", emoji: "🧬", color: "from-blue-400 to-violet-500", bg: "bg-blue-50",   title: "Set your skin type",  desc: "We crunch your skin tone + the UV level to give you advice that actually fits you." },
+                    { step: "03", emoji: "⏰", color: "from-green-400 to-teal-500",  bg: "bg-green-50",  title: "Get reminders",       desc: "Set a sunscreen timer and we'll ping you when it's time to reapply. Easy." },
                   ].map((s) => (
                     <div key={s.step} className={`${s.bg} rounded-2xl p-6 relative overflow-hidden flex items-start gap-5`}>
                       <span className="absolute top-3 right-5 text-[48px] font-extrabold text-black/5 select-none leading-none">{s.step}</span>
@@ -445,7 +431,7 @@ export default function LandingPage() {
                 <div className="flex flex-col gap-4">
                   {[
                     { icon: Activity, grad: "from-blue-400 to-violet-500",  title: "Live UV tracking",         desc: "Minute-by-minute UV index for your exact spot, not just your city." },
-                    { icon: MapPin,   grad: "from-orange-400 to-pink-500",  title: "Interactive UV map",        desc: "Tap anywhere on the map to see UV levels \u2014 great for planning your day." },
+                    { icon: MapPin,   grad: "from-orange-400 to-pink-500",  title: "Interactive UV map",        desc: "Tap anywhere on the map to see UV levels — great for planning your day." },
                     { icon: Smile,    grad: "from-green-400 to-teal-500",   title: "Skin type personalisation", desc: "Your skin tone = your advice. No generic tips, only what applies to you." },
                     { icon: Bell,     grad: "from-pink-400 to-rose-500",    title: "Sunscreen timer",           desc: "Tap once when you apply sunscreen and we remind you to reapply in 2 hours." },
                   ].map((f, i) => (
@@ -474,9 +460,9 @@ export default function LandingPage() {
             </div>
             <div className="grid md:grid-cols-3 gap-6">
               {[
-                { quote: "I literally got a sunburn every summer before this app. Now I actually reapply.", name: "Mia, 21 \ud83c\udde6\ud83c\uddfa" },
-                { quote: "The UV map is so sick. I check it before every surf session.",                    name: "Jake, 19 \ud83c\udfc4" },
-                { quote: "Finally an app that doesn't talk to me like I'm 50. The reminders are so helpful.", name: "Priya, 22 \u2728" },
+                { quote: "I literally got a sunburn every summer before this app. Now I actually reapply.", name: "Mia, 21 🇦🇺" },
+                { quote: "The UV map is so sick. I check it before every surf session.",                    name: "Jake, 19 🏄" },
+                { quote: "Finally an app that doesn't talk to me like I'm 50. The reminders are so helpful.", name: "Priya, 22 ✨" },
               ].map((t, i) => (
                 <div key={i} className="bg-white border border-orange-100 rounded-3xl p-7">
                   <p className="text-[32px] text-orange-400 leading-none mb-2">&ldquo;</p>
@@ -517,7 +503,7 @@ export default function LandingPage() {
           <div className="max-w-[700px] mx-auto px-6 relative z-10 text-center">
             {isLoggedIn ? (
               <>
-                <p className="text-white/80 text-[14px] font-bold uppercase tracking-widest mb-4">You&apos;re already in \ud83e\udd19</p>
+                <p className="text-white/80 text-[14px] font-bold uppercase tracking-widest mb-4">You&apos;re already in 🤙</p>
                 <h2 className="text-[42px] md:text-[52px] font-extrabold text-white mb-5 leading-tight">Hey {username}, <br />go check your UV</h2>
                 <p className="text-white/80 text-[18px] mb-10">Your Sun Check is ready and waiting.</p>
                 <Link to="/dashboard" className="inline-flex items-center gap-2 bg-white px-10 py-4 rounded-2xl text-[18px] font-extrabold hover:bg-gray-50 transition-all hover:scale-105 shadow-xl" style={{ color: "#FF6900" }}>
@@ -527,7 +513,7 @@ export default function LandingPage() {
             ) : (
               <>
                 <p className="text-white/80 text-[14px] font-bold uppercase tracking-widest mb-4">It&apos;s free, always</p>
-                <h2 className="text-[42px] md:text-[52px] font-extrabold text-white mb-5 leading-tight">Stop guessing. <br />Start checking. \u2600\ufe0f</h2>
+                <h2 className="text-[42px] md:text-[52px] font-extrabold text-white mb-5 leading-tight">Stop guessing. <br />Start checking. ☀️</h2>
                 <p className="text-white/80 text-[18px] mb-10">Takes 30 seconds to sign up. Your skin will thank you.</p>
                 <Link to="/signup" className="inline-flex items-center gap-2 bg-white px-10 py-4 rounded-2xl text-[18px] font-extrabold hover:bg-gray-50 transition-all hover:scale-105 shadow-xl" style={{ color: "#FF6900" }}>
                   Create my free account <ChevronRight size={22} />
@@ -545,7 +531,7 @@ export default function LandingPage() {
             <Sun className="text-orange-400" size={22} strokeWidth={2} />
             <span className="text-[18px] font-extrabold tracking-tight">SunGuard</span>
           </div>
-          <div className="text-gray-500 text-[13px]">&copy; {new Date().getFullYear()} SunGuard. Made with \u2615 for sun-lovers.</div>
+          <div className="text-gray-500 text-[13px]">&copy; {new Date().getFullYear()} SunGuard. Made with ☕ for sun-lovers.</div>
           <div className="flex gap-6 text-[13px] text-gray-500">
             <a href="#" className="hover:text-white transition-colors">Privacy</a>
             <a href="#" className="hover:text-white transition-colors">Terms</a>

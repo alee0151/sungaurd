@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { CheckCircle, AlertCircle, Eye, FileText, X, Download, Sun } from "lucide-react";
+import { useState, useRef } from "react";
+import { CheckCircle, AlertCircle, Eye, FileText, X, Download, Sun, Share2, Printer } from "lucide-react";
 import { useAppContext } from "./Layout";
 
 // US3.1 - Skin type data
@@ -12,57 +12,25 @@ const skinTypes = [
   { id: 6, name: "Type 6: Dark Brown/Black", desc: "Never burns, deeply pigmented" },
 ];
 
-// US3.1 - Personalised advice per skin type
 function getAdvice(skinType: number, uv: number) {
   const adviceMap: Record<number, { general: string; spf: string }> = {
-    1: {
-      general: "Use SPF 50+. Wear protective clothing during peak hours. Reapply sunscreen every 2 hours.",
-      spf: "SPF 50+ is essential for your skin type.",
-    },
-    2: {
-      general: "Use SPF 50+. Wear protective clothing during peak hours. Reapply sunscreen every 2 hours.",
-      spf: "SPF 50+ is recommended for fair skin.",
-    },
-    3: {
-      general: "Use SPF 30+. Wear protective clothing during peak hours. Reapply sunscreen every 2 hours.",
-      spf: "SPF 30+ recommended for your skin type.",
-    },
-    4: {
-      general: "Use SPF 30+. Wear protective clothing during extended outdoor activities.",
-      spf: "SPF 30+ is sufficient for most conditions.",
-    },
-    5: {
-      general: "Use SPF 15-30. Still protect against prolonged sun exposure during peak hours.",
-      spf: "SPF 15+ is recommended for extended outdoor time.",
-    },
-    6: {
-      general: "Use SPF 15+. Although less susceptible to burns, UV damage is still possible.",
-      spf: "SPF 15+ is recommended for extended outdoor time.",
-    },
+    1: { general: "Use SPF 50+. Wear protective clothing during peak hours. Reapply sunscreen every 2 hours.", spf: "SPF 50+ is essential for your skin type." },
+    2: { general: "Use SPF 50+. Wear protective clothing during peak hours. Reapply sunscreen every 2 hours.", spf: "SPF 50+ is recommended for fair skin." },
+    3: { general: "Use SPF 30+. Wear protective clothing during peak hours. Reapply sunscreen every 2 hours.", spf: "SPF 30+ recommended for your skin type." },
+    4: { general: "Use SPF 30+. Wear protective clothing during extended outdoor activities.", spf: "SPF 30+ is sufficient for most conditions." },
+    5: { general: "Use SPF 15-30. Still protect against prolonged sun exposure during peak hours.", spf: "SPF 15+ is recommended for extended outdoor time." },
+    6: { general: "Use SPF 15+. Although less susceptible to burns, UV damage is still possible.", spf: "SPF 15+ is recommended for extended outdoor time." },
   };
-
   const advice = adviceMap[skinType] || adviceMap[3];
-
   let uvAdvice = "";
   let riskText = "";
-  if (uv <= 2) {
-    uvAdvice = "SPF 15+ is sufficient for low UV conditions.";
-    riskText = "Basic sun protection recommended.";
-  } else if (uv <= 5) {
-    uvAdvice = "SPF 30+ recommended for moderate UV.";
-    riskText = "Standard sun protection measures advised.";
-  } else if (uv <= 7) {
-    uvAdvice = "SPF 50+ strongly recommended. Seek shade during peak hours.";
-    riskText = "Enhanced sun protection required.";
-  } else {
-    uvAdvice = "SPF 50+ essential. Minimize outdoor exposure.";
-    riskText = "Maximum sun protection measures needed.";
-  }
-
+  if (uv <= 2) { uvAdvice = "SPF 15+ is sufficient for low UV conditions."; riskText = "Basic sun protection recommended."; }
+  else if (uv <= 5) { uvAdvice = "SPF 30+ recommended for moderate UV."; riskText = "Standard sun protection measures advised."; }
+  else if (uv <= 7) { uvAdvice = "SPF 50+ strongly recommended. Seek shade during peak hours."; riskText = "Enhanced sun protection required."; }
+  else { uvAdvice = "SPF 50+ essential. Minimize outdoor exposure."; riskText = "Maximum sun protection measures needed."; }
   return { ...advice, uvAdvice, riskText };
 }
 
-// US3.3 - Risk estimation
 function getRiskLevel(uv: number, skinType: number) {
   const sensitivity = [0, 2, 1.5, 1, 0.7, 0.5, 0.3];
   const adjustedUV = uv * (sensitivity[skinType] || 1);
@@ -72,7 +40,6 @@ function getRiskLevel(uv: number, skinType: number) {
   return { level: "Very High", color: "#FB2C36" };
 }
 
-// Color blind mode colors
 const standardColors = ["#00C950", "#F0B100", "#FF6900", "#FB2C36", "#9810FA"];
 const colorBlindColors = ["#0077BB", "#33BBEE", "#EE7733", "#CC3311", "#AA3377"];
 
@@ -83,20 +50,76 @@ const safetyTips = [
   { num: 4, title: "Check Regularly", desc: "Monitor skin for any changes" },
 ];
 
+// ---------- helpers ----------
+function buildReportText(
+  username: string,
+  skinTypeName: string,
+  uv: number,
+  riskLevel: string,
+  advice: ReturnType<typeof getAdvice>,
+  actionText: string,
+  dateStr: string,
+  timeStr: string
+) {
+  return [
+    "============================================",
+    "         SUNGUARD — UV PROTECTION REPORT    ",
+    "============================================",
+    `Generated for : ${username || "You"}`,
+    `Skin Type     : ${skinTypeName}`,
+    `Date          : ${dateStr}`,
+    `Time          : ${timeStr}`,
+    "",
+    "--------------------------------------------",
+    "UV INDEX & RISK",
+    "--------------------------------------------",
+    `Current UV Index : ${uv}`,
+    `Your Risk Level  : ${riskLevel}`,
+    "",
+    "--------------------------------------------",
+    "GENERAL ADVICE",
+    "--------------------------------------------",
+    advice.general,
+    "",
+    "--------------------------------------------",
+    "UV-SPECIFIC ADVICE",
+    "--------------------------------------------",
+    advice.uvAdvice,
+    "",
+    "--------------------------------------------",
+    "RISK SUMMARY",
+    "--------------------------------------------",
+    advice.riskText,
+    "",
+    "--------------------------------------------",
+    "RECOMMENDED ACTION",
+    "--------------------------------------------",
+    actionText,
+    "",
+    "--------------------------------------------",
+    "SUN SAFETY TIPS",
+    "--------------------------------------------",
+    ...safetyTips.map((t) => `${t.num}. ${t.title}: ${t.desc}`),
+    "",
+    "============================================",
+    "Disclaimer: This report is personalised based",
+    "on your skin type and the current UV index.",
+    "Always consult a health professional for",
+    "medical advice.",
+    "============================================",
+  ].join("\n");
+}
+
 // ---------- REPORT MODAL ----------
 function UVReportModal({
-  open,
-  onClose,
-  username,
-  skinType,
-  uvData,
+  open, onClose, username, skinType, uvData,
 }: {
-  open: boolean;
-  onClose: () => void;
-  username: string;
-  skinType: number;
-  uvData: { currentUV: number; location?: string };
+  open: boolean; onClose: () => void; username: string;
+  skinType: number; uvData: { currentUV: number; location?: string };
 }) {
+  const [shareStatus, setShareStatus] = useState<"idle" | "copied" | "shared">("idle");
+  const printRef = useRef<HTMLDivElement>(null);
+
   if (!open) return null;
 
   const advice = getAdvice(skinType, uvData.currentUV);
@@ -105,10 +128,7 @@ function UVReportModal({
   const now = new Date();
   const dateStr = now.toLocaleDateString("en-AU", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
   const timeStr = now.toLocaleTimeString("en-AU", { hour: "2-digit", minute: "2-digit" });
-
-  const riskPercent =
-    uvData.currentUV <= 2 ? 15 : uvData.currentUV <= 5 ? 40 : uvData.currentUV <= 7 ? 85 : 100;
-
+  const riskPercent = uvData.currentUV <= 2 ? 15 : uvData.currentUV <= 5 ? 40 : uvData.currentUV <= 7 ? 85 : 100;
   const actionText =
     risk.level === "Low"
       ? "Basic sun protection is sufficient. SPF 15+ recommended for extended outdoor time."
@@ -116,131 +136,200 @@ function UVReportModal({
       ? "Apply SPF 30+ sunscreen. Wear protective clothing during extended outdoor activities."
       : "Apply SPF 50+ sunscreen. Seek shade during peak hours. Wear protective clothing and hat.";
 
+  // --- Download as .txt ---
+  const handleDownload = () => {
+    const text = buildReportText(username, skinTypeName, uvData.currentUV, risk.level, advice, actionText, dateStr, timeStr);
+    const blob = new Blob([text], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `SunGuard_UV_Report_${now.toISOString().slice(0, 10)}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  // --- Print to PDF ---
+  const handlePrint = () => {
+    if (!printRef.current) return;
+    const printContents = printRef.current.innerHTML;
+    const win = window.open("", "_blank", "width=700,height=900");
+    if (!win) return;
+    win.document.write(`
+      <html><head><title>SunGuard UV Report</title>
+      <style>
+        body { font-family: system-ui, sans-serif; padding: 32px; color: #0a0a0a; }
+        * { box-sizing: border-box; }
+      </style></head>
+      <body>${printContents}</body></html>
+    `);
+    win.document.close();
+    win.focus();
+    setTimeout(() => { win.print(); win.close(); }, 400);
+  };
+
+  // --- Share ---
+  const handleShare = async () => {
+    const text = buildReportText(username, skinTypeName, uvData.currentUV, risk.level, advice, actionText, dateStr, timeStr);
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: "My SunGuard UV Report", text });
+        setShareStatus("shared");
+      } catch {}
+    } else {
+      await navigator.clipboard.writeText(text);
+      setShareStatus("copied");
+    }
+    setTimeout(() => setShareStatus("idle"), 2500);
+  };
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4"
       style={{ backgroundColor: "rgba(0,0,0,0.5)" }}
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-[600px] max-h-[90vh] overflow-y-auto">
-        {/* Report Header */}
-        <div
-          className="rounded-t-3xl px-8 pt-8 pb-6 relative"
-          style={{ backgroundImage: "linear-gradient(135deg, #FF6900 0%, #f63b9a 100%)" }}
-        >
-          <button
-            onClick={onClose}
-            className="absolute top-5 right-5 w-8 h-8 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center transition-colors cursor-pointer"
+      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-[620px] max-h-[92vh] flex flex-col">
+
+        {/* Scrollable report area */}
+        <div className="overflow-y-auto flex-1" ref={printRef}>
+          {/* Gradient header */}
+          <div
+            className="rounded-t-3xl px-8 pt-8 pb-6 relative"
+            style={{ backgroundImage: "linear-gradient(135deg, #FF6900 0%, #f63b9a 100%)" }}
           >
-            <X size={16} className="text-white" />
-          </button>
-          <div className="flex items-center gap-3 mb-4">
-            <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center">
-              <Sun size={20} className="text-white" />
+            <button
+              onClick={onClose}
+              className="absolute top-5 right-5 w-8 h-8 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center transition-colors cursor-pointer"
+            >
+              <X size={16} className="text-white" />
+            </button>
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center">
+                <Sun size={20} className="text-white" />
+              </div>
+              <div>
+                <p className="text-white/80 text-[12px] font-semibold uppercase tracking-widest">SunGuard</p>
+                <h2 className="text-white text-[22px] font-extrabold">UV Protection Report</h2>
+              </div>
             </div>
-            <div>
-              <p className="text-white/80 text-[12px] font-semibold uppercase tracking-widest">SunGuard</p>
-              <h2 className="text-white text-[22px] font-extrabold">UV Protection Report</h2>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="bg-white/15 rounded-2xl px-4 py-3">
+                <p className="text-white/70 text-[11px] uppercase tracking-wide mb-0.5">Generated for</p>
+                <p className="text-white font-bold text-[15px]">{username || "You"}</p>
+              </div>
+              <div className="bg-white/15 rounded-2xl px-4 py-3">
+                <p className="text-white/70 text-[11px] uppercase tracking-wide mb-0.5">Skin Type</p>
+                <p className="text-white font-bold text-[15px]">{skinTypeName}</p>
+              </div>
+              <div className="bg-white/15 rounded-2xl px-4 py-3">
+                <p className="text-white/70 text-[11px] uppercase tracking-wide mb-0.5">Date</p>
+                <p className="text-white font-bold text-[13px]">{dateStr}</p>
+              </div>
+              <div className="bg-white/15 rounded-2xl px-4 py-3">
+                <p className="text-white/70 text-[11px] uppercase tracking-wide mb-0.5">Time</p>
+                <p className="text-white font-bold text-[15px]">{timeStr}</p>
+              </div>
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="bg-white/15 rounded-2xl px-4 py-3">
-              <p className="text-white/70 text-[11px] uppercase tracking-wide mb-0.5">Generated for</p>
-              <p className="text-white font-bold text-[15px]">{username || "You"}</p>
+
+          {/* Body */}
+          <div className="px-8 py-6 flex flex-col gap-5">
+            {/* UV + Risk */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="bg-[#fff7ed] rounded-2xl p-5 flex flex-col items-center">
+                <p className="text-[#9f2d00] text-[12px] font-semibold uppercase tracking-wide mb-1">Current UV Index</p>
+                <p className="text-[#FF6900] text-[48px] font-extrabold leading-none">{uvData.currentUV}</p>
+              </div>
+              <div className="rounded-2xl p-5 flex flex-col items-center" style={{ backgroundColor: `${risk.color}18` }}>
+                <p className="text-[12px] font-semibold uppercase tracking-wide mb-1" style={{ color: risk.color }}>Your Risk Level</p>
+                <p className="text-[32px] font-extrabold leading-none" style={{ color: risk.color }}>{risk.level}</p>
+              </div>
             </div>
-            <div className="bg-white/15 rounded-2xl px-4 py-3">
-              <p className="text-white/70 text-[11px] uppercase tracking-wide mb-0.5">Skin Type</p>
-              <p className="text-white font-bold text-[15px]">{skinTypeName}</p>
+
+            {/* Risk bar */}
+            <div>
+              <p className="text-[#4a5565] text-[13px] font-semibold mb-2">Exposure Risk</p>
+              <div className="w-full h-3 bg-gray-100 rounded-full overflow-hidden">
+                <div className="h-full rounded-full" style={{ width: `${riskPercent}%`, backgroundColor: risk.color }} />
+              </div>
             </div>
-            <div className="bg-white/15 rounded-2xl px-4 py-3">
-              <p className="text-white/70 text-[11px] uppercase tracking-wide mb-0.5">Date</p>
-              <p className="text-white font-bold text-[13px]">{dateStr}</p>
+
+            {/* General Advice */}
+            <div className="bg-[#eff6ff] rounded-2xl p-5">
+              <div className="flex items-center gap-2 mb-2">
+                <AlertCircle size={16} className="text-[#3B82F6]" />
+                <p className="text-[#1e40af] text-[14px] font-bold">General Advice</p>
+              </div>
+              <p className="text-[#1e40af] text-[14px] leading-relaxed">{advice.general}</p>
             </div>
-            <div className="bg-white/15 rounded-2xl px-4 py-3">
-              <p className="text-white/70 text-[11px] uppercase tracking-wide mb-0.5">Time</p>
-              <p className="text-white font-bold text-[15px]">{timeStr}</p>
+
+            {/* UV + Risk cards */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="bg-[#fff7ed] rounded-2xl p-4">
+                <p className="text-[#9f2d00] text-[13px] font-bold mb-1">UV-Specific Advice</p>
+                <p className="text-[#4a5565] text-[13px] leading-relaxed">{advice.uvAdvice}</p>
+              </div>
+              <div className="bg-[#f0fdf4] rounded-2xl p-4">
+                <p className="text-[#166534] text-[13px] font-bold mb-1">Risk Summary</p>
+                <p className="text-[#4a5565] text-[13px] leading-relaxed">{advice.riskText}</p>
+              </div>
             </div>
+
+            {/* Recommended Action */}
+            <div className="bg-[#f0fdf4] border border-[#bbf7d0] rounded-2xl px-5 py-4 flex items-start gap-3">
+              <CheckCircle size={18} className="text-[#16a34a] shrink-0 mt-0.5" />
+              <div>
+                <p className="text-[#166534] text-[14px] font-bold mb-1">Recommended Action</p>
+                <p className="text-[#166534] text-[13px] leading-relaxed">{actionText}</p>
+              </div>
+            </div>
+
+            {/* Safety Tips */}
+            <div>
+              <p className="text-[#0a0a0a] text-[15px] font-bold mb-3">Sun Safety Tips</p>
+              <div className="grid grid-cols-2 gap-3">
+                {safetyTips.map((tip) => (
+                  <div key={tip.num} className="flex items-start gap-3 bg-[#fff9f5] rounded-xl p-4">
+                    <div className="w-7 h-7 rounded-full bg-[#ff6900] text-white text-[13px] flex items-center justify-center shrink-0 font-bold">
+                      {tip.num}
+                    </div>
+                    <div>
+                      <p className="text-[#0a0a0a] text-[13px] font-semibold">{tip.title}</p>
+                      <p className="text-[#6a7282] text-[12px]">{tip.desc}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <p className="text-center text-[#9ca3af] text-[11px]">
+              This report is personalised based on your skin type and the current UV index at the time of generation. Always consult a health professional for medical advice.
+            </p>
           </div>
         </div>
 
-        {/* Report Body */}
-        <div className="px-8 py-6 flex flex-col gap-5">
-
-          {/* UV Index + Risk */}
-          <div className="grid grid-cols-2 gap-4">
-            <div className="bg-[#fff7ed] rounded-2xl p-5 flex flex-col items-center">
-              <p className="text-[#9f2d00] text-[12px] font-semibold uppercase tracking-wide mb-1">Current UV Index</p>
-              <p className="text-[#FF6900] text-[48px] font-extrabold leading-none">{uvData.currentUV}</p>
-            </div>
-            <div className="rounded-2xl p-5 flex flex-col items-center" style={{ backgroundColor: `${risk.color}18` }}>
-              <p className="text-[12px] font-semibold uppercase tracking-wide mb-1" style={{ color: risk.color }}>Your Risk Level</p>
-              <p className="text-[32px] font-extrabold leading-none" style={{ color: risk.color }}>{risk.level}</p>
-            </div>
-          </div>
-
-          {/* Risk bar */}
-          <div>
-            <p className="text-[#4a5565] text-[13px] font-semibold mb-2">Exposure Risk</p>
-            <div className="w-full h-3 bg-gray-100 rounded-full overflow-hidden">
-              <div
-                className="h-full rounded-full transition-all duration-500"
-                style={{ width: `${riskPercent}%`, backgroundColor: risk.color }}
-              />
-            </div>
-          </div>
-
-          {/* General Advice */}
-          <div className="bg-[#eff6ff] rounded-2xl p-5">
-            <div className="flex items-center gap-2 mb-2">
-              <AlertCircle size={16} className="text-[#3B82F6]" />
-              <p className="text-[#1e40af] text-[14px] font-bold">General Advice</p>
-            </div>
-            <p className="text-[#1e40af] text-[14px] leading-relaxed">{advice.general}</p>
-          </div>
-
-          {/* UV-specific advice */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="bg-[#fff7ed] rounded-2xl p-4">
-              <p className="text-[#9f2d00] text-[13px] font-bold mb-1">UV-Specific Advice</p>
-              <p className="text-[#4a5565] text-[13px] leading-relaxed">{advice.uvAdvice}</p>
-            </div>
-            <div className="bg-[#f0fdf4] rounded-2xl p-4">
-              <p className="text-[#166534] text-[13px] font-bold mb-1">Risk Summary</p>
-              <p className="text-[#4a5565] text-[13px] leading-relaxed">{advice.riskText}</p>
-            </div>
-          </div>
-
-          {/* Recommended Actions */}
-          <div className="bg-[#f0fdf4] border border-[#bbf7d0] rounded-2xl px-5 py-4 flex items-start gap-3">
-            <CheckCircle size={18} className="text-[#16a34a] shrink-0 mt-0.5" />
-            <div>
-              <p className="text-[#166534] text-[14px] font-bold mb-1">Recommended Action</p>
-              <p className="text-[#166534] text-[13px] leading-relaxed">{actionText}</p>
-            </div>
-          </div>
-
-          {/* Safety Tips */}
-          <div>
-            <p className="text-[#0a0a0a] text-[15px] font-bold mb-3">Sun Safety Tips</p>
-            <div className="grid grid-cols-2 gap-3">
-              {safetyTips.map((tip) => (
-                <div key={tip.num} className="flex items-start gap-3 bg-[#fff9f5] rounded-xl p-4">
-                  <div className="w-7 h-7 rounded-full bg-[#ff6900] text-white text-[13px] flex items-center justify-center shrink-0 font-bold">
-                    {tip.num}
-                  </div>
-                  <div>
-                    <p className="text-[#0a0a0a] text-[13px] font-semibold">{tip.title}</p>
-                    <p className="text-[#6a7282] text-[12px]">{tip.desc}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Footer note */}
-          <p className="text-center text-[#9ca3af] text-[11px]">
-            This report is personalised based on your skin type and the current UV index at the time of generation. Always consult a health professional for medical advice.
-          </p>
+        {/* Sticky action bar */}
+        <div className="border-t border-gray-100 px-8 py-4 flex items-center gap-3 bg-white rounded-b-3xl shrink-0">
+          <button
+            onClick={handleDownload}
+            className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-[#0a0a0a] hover:bg-[#222] text-white text-[13px] font-bold transition-all cursor-pointer"
+          >
+            <Download size={15} /> Download .txt
+          </button>
+          <button
+            onClick={handlePrint}
+            className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-[#eff6ff] hover:bg-[#dbeafe] text-[#1e40af] text-[13px] font-bold transition-all cursor-pointer"
+          >
+            <Printer size={15} /> Save as PDF
+          </button>
+          <button
+            onClick={handleShare}
+            className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-white text-[13px] font-bold transition-all cursor-pointer"
+            style={{ backgroundImage: "linear-gradient(135deg, #FF6900, #f63b9a)" }}
+          >
+            <Share2 size={15} />
+            {shareStatus === "copied" ? "Copied!" : shareStatus === "shared" ? "Shared!" : "Share"}
+          </button>
         </div>
       </div>
     </div>
@@ -256,12 +345,7 @@ export default function ProfilePage() {
   const risk = getRiskLevel(uvData.currentUV, skinType);
   const colorPalette = colorBlindMode ? colorBlindColors : standardColors;
   const colorLabels = ["Low", "Mod", "High", "Very", "Ext"];
-
-  const riskPercent =
-    uvData.currentUV <= 2 ? 15
-    : uvData.currentUV <= 5 ? 40
-    : uvData.currentUV <= 7 ? 85
-    : 100;
+  const riskPercent = uvData.currentUV <= 2 ? 15 : uvData.currentUV <= 5 ? 40 : uvData.currentUV <= 7 ? 85 : 100;
 
   return (
     <>
@@ -277,10 +361,7 @@ export default function ProfilePage() {
         {/* Header */}
         <div
           className="rounded-2xl px-6 py-4 flex items-center justify-between gap-3"
-          style={{
-            backgroundImage:
-              "linear-gradient(135deg, rgba(255,137,4,0.15) 0%, rgba(246,51,154,0.15) 100%)",
-          }}
+          style={{ backgroundImage: "linear-gradient(135deg, rgba(255,137,4,0.15) 0%, rgba(246,51,154,0.15) 100%)" }}
         >
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-full bg-[#ff6900]/20 flex items-center justify-center">
@@ -303,35 +384,23 @@ export default function ProfilePage() {
           </button>
         </div>
 
-        {/* US3.1 - Skin Type Selection */}
+        {/* Skin Type Selection */}
         <div className="bg-white rounded-2xl border border-black/10 p-6">
-          <h3 className="text-[#0a0a0a] text-[16px]" style={{ fontWeight: 500 }}>
-            Select Your Skin Type
-          </h3>
-          <p className="text-[#717182] text-[14px] mt-1 mb-4">
-            Choose the option that best describes your skin
-          </p>
+          <h3 className="text-[#0a0a0a] text-[16px]" style={{ fontWeight: 500 }}>Select Your Skin Type</h3>
+          <p className="text-[#717182] text-[14px] mt-1 mb-4">Choose the option that best describes your skin</p>
           <div className="flex flex-col gap-2">
             {skinTypes.map((type) => (
               <button
                 key={type.id}
                 onClick={() => setSkinType(type.id)}
                 className={`w-full text-left px-5 py-3.5 rounded-xl border transition-all cursor-pointer ${
-                  skinType === type.id
-                    ? "bg-[#fff7ed] border-[#ff6900]"
-                    : "bg-white border-black/10 hover:bg-gray-50"
+                  skinType === type.id ? "bg-[#fff7ed] border-[#ff6900]" : "bg-white border-black/10 hover:bg-gray-50"
                 }`}
               >
                 <div className="flex items-center gap-2">
-                  {skinType === type.id && (
-                    <span className="w-2 h-2 rounded-full bg-[#0a0a0a]" />
-                  )}
-                  <span className="text-[#0a0a0a] text-[14px]" style={{ fontWeight: 500 }}>
-                    {type.name}
-                  </span>
-                  {skinType === type.id && (
-                    <CheckCircle size={16} className="text-[#00C950]" />
-                  )}
+                  {skinType === type.id && <span className="w-2 h-2 rounded-full bg-[#0a0a0a]" />}
+                  <span className="text-[#0a0a0a] text-[14px]" style={{ fontWeight: 500 }}>{type.name}</span>
+                  {skinType === type.id && <CheckCircle size={16} className="text-[#00C950]" />}
                   <span className="text-[#6a7282] text-[14px] ml-1">{type.desc}</span>
                 </div>
               </button>
@@ -339,40 +408,25 @@ export default function ProfilePage() {
           </div>
         </div>
 
-        {/* US3.3 - UV Exposure Risk Estimation */}
+        {/* UV Exposure Risk */}
         <div className="bg-white rounded-2xl border border-black/10 p-6">
-          <h3 className="text-[#0a0a0a] text-[16px]" style={{ fontWeight: 500 }}>
-            Current UV Exposure Risk
-          </h3>
-          <p className="text-[#717182] text-[14px] mt-1 mb-4">
-            Based on current UV index and your skin type
-          </p>
+          <h3 className="text-[#0a0a0a] text-[16px]" style={{ fontWeight: 500 }}>Current UV Exposure Risk</h3>
+          <p className="text-[#717182] text-[14px] mt-1 mb-4">Based on current UV index and your skin type</p>
           <div className="flex items-center justify-between mb-2">
             <div>
               <span className="text-[#4a5565] text-[13px]">Current UV Index</span>
-              <p className="text-[#0a0a0a] text-[24px]" style={{ fontWeight: 700 }}>
-                {uvData.currentUV}
-              </p>
+              <p className="text-[#0a0a0a] text-[24px]" style={{ fontWeight: 700 }}>{uvData.currentUV}</p>
             </div>
             <div className="text-right">
               <span className="text-[#4a5565] text-[13px]">Your Risk Level</span>
-              <p className="text-[24px]" style={{ fontWeight: 700, color: risk.color }}>
-                {risk.level}
-              </p>
+              <p className="text-[24px]" style={{ fontWeight: 700, color: risk.color }}>{risk.level}</p>
             </div>
           </div>
           <div className="w-full h-3 bg-gray-200 rounded-full overflow-hidden">
-            <div
-              className="h-full rounded-full transition-all duration-500"
-              style={{ width: `${riskPercent}%`, backgroundColor: risk.color }}
-            />
+            <div className="h-full rounded-full transition-all duration-500" style={{ width: `${riskPercent}%`, backgroundColor: risk.color }} />
           </div>
-
-          {/* Recommended Actions */}
           <div className="mt-4">
-            <p className="text-[#0a0a0a] text-[14px] mb-2" style={{ fontWeight: 600 }}>
-              Recommended Actions:
-            </p>
+            <p className="text-[#0a0a0a] text-[14px] mb-2" style={{ fontWeight: 600 }}>Recommended Actions:</p>
             <div className="bg-[#f0fdf4] border border-[#bbf7d0] rounded-xl px-4 py-3 flex items-center gap-2">
               <CheckCircle size={16} className="text-[#16a34a] shrink-0" />
               <p className="text-[#166534] text-[13px]">
@@ -386,21 +440,15 @@ export default function ProfilePage() {
           </div>
         </div>
 
-        {/* General Safety Tips */}
+        {/* Safety Tips */}
         <div className="bg-white rounded-2xl border border-black/10 p-6">
-          <h3 className="text-[#0a0a0a] text-[16px] mb-4" style={{ fontWeight: 500 }}>
-            General Sun Safety Tips
-          </h3>
+          <h3 className="text-[#0a0a0a] text-[16px] mb-4" style={{ fontWeight: 500 }}>General Sun Safety Tips</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {safetyTips.map((tip) => (
               <div key={tip.num} className="flex items-start gap-3">
-                <div className="w-7 h-7 rounded-full bg-[#ff6900] text-white text-[13px] flex items-center justify-center shrink-0" style={{ fontWeight: 600 }}>
-                  {tip.num}
-                </div>
+                <div className="w-7 h-7 rounded-full bg-[#ff6900] text-white text-[13px] flex items-center justify-center shrink-0" style={{ fontWeight: 600 }}>{tip.num}</div>
                 <div>
-                  <p className="text-[#0a0a0a] text-[14px]" style={{ fontWeight: 500 }}>
-                    {tip.title}
-                  </p>
+                  <p className="text-[#0a0a0a] text-[14px]" style={{ fontWeight: 500 }}>{tip.title}</p>
                   <p className="text-[#6a7282] text-[13px]">{tip.desc}</p>
                 </div>
               </div>
@@ -410,64 +458,38 @@ export default function ProfilePage() {
 
         {/* Accessibility Settings */}
         <div className="bg-white rounded-2xl border border-black/10 p-6">
-          <h3 className="text-[#0a0a0a] text-[16px]" style={{ fontWeight: 500 }}>
-            Accessibility Settings
-          </h3>
-          <p className="text-[#717182] text-[14px] mt-1 mb-4">
-            Customize the app for better visibility and usability
-          </p>
-
-          {/* Color Blind Mode */}
+          <h3 className="text-[#0a0a0a] text-[16px]" style={{ fontWeight: 500 }}>Accessibility Settings</h3>
+          <p className="text-[#717182] text-[14px] mt-1 mb-4">Customize the app for better visibility and usability</p>
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-3">
               <Eye size={18} className="text-[#4a5565]" />
               <div>
-                <p className="text-[#0a0a0a] text-[14px]" style={{ fontWeight: 500 }}>
-                  Color Blind Mode
-                </p>
+                <p className="text-[#0a0a0a] text-[14px]" style={{ fontWeight: 500 }}>Color Blind Mode</p>
                 <p className="text-[#6a7282] text-[13px]">Uses color-blind friendly palette</p>
               </div>
             </div>
             <button
               onClick={() => setColorBlindMode(!colorBlindMode)}
-              className={`w-11 h-6 rounded-full transition-colors cursor-pointer ${
-                colorBlindMode ? "bg-[#FF6900]" : "bg-gray-300"
-              }`}
+              className={`w-11 h-6 rounded-full transition-colors cursor-pointer ${colorBlindMode ? "bg-[#FF6900]" : "bg-gray-300"}`}
             >
-              <div
-                className={`w-5 h-5 rounded-full bg-white shadow transition-transform ${
-                  colorBlindMode ? "translate-x-5.5" : "translate-x-0.5"
-                }`}
-              />
+              <div className={`w-5 h-5 rounded-full bg-white shadow transition-transform ${colorBlindMode ? "translate-x-5.5" : "translate-x-0.5"}`} />
             </button>
           </div>
-
-          {/* Color Preview */}
           <div className="mb-4">
-            <p className="text-[#4a5565] text-[12px] mb-2">
-              {colorBlindMode ? "Color Blind" : "Standard"} Colors
-            </p>
+            <p className="text-[#4a5565] text-[12px] mb-2">{colorBlindMode ? "Color Blind" : "Standard"} Colors</p>
             <div className="flex gap-0">
               {colorPalette.map((color, i) => (
                 <div key={i} className="flex-1 flex flex-col items-center">
-                  <div
-                    className="w-full h-8 first:rounded-l-lg last:rounded-r-lg"
-                    style={{ backgroundColor: color }}
-                  />
+                  <div className="w-full h-8 first:rounded-l-lg last:rounded-r-lg" style={{ backgroundColor: color }} />
                   <span className="text-[11px] text-[#6a7282] mt-1">{colorLabels[i]}</span>
                 </div>
               ))}
             </div>
           </div>
-
-          {/* Info about color blind mode */}
           <div className="bg-[#eff6ff] rounded-xl px-4 py-3 flex items-start gap-2">
             <AlertCircle size={16} className="text-[#3B82F6] mt-0.5 shrink-0" />
             <p className="text-[#1e40af] text-[12px]">
-              This mode uses colors that are easier to distinguish for people with color vision
-              deficiencies, particularly deuteranopia and protanopia (red-green color blindness).
-              The palette uses blue, cyan, orange, pink, and indigo instead of green, yellow,
-              orange, red, and purple.
+              This mode uses colors that are easier to distinguish for people with color vision deficiencies, particularly deuteranopia and protanopia (red-green color blindness). The palette uses blue, cyan, orange, pink, and indigo instead of green, yellow, orange, red, and purple.
             </p>
           </div>
         </div>

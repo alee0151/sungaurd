@@ -1,5 +1,5 @@
-import { useState, useRef } from "react";
-import { CheckCircle, AlertCircle, Eye, FileText, X, Sun, Share2, Printer } from "lucide-react";
+import { useState } from "react";
+import { CheckCircle, AlertCircle, Eye, FileText, X, Sun } from "lucide-react";
 import { useAppContext } from "./Layout";
 
 const skinTypes = [
@@ -49,25 +49,6 @@ const safetyTips = [
   { num: 4, title: "Check Regularly", desc: "Monitor skin for any changes" },
 ];
 
-function buildShareText(
-  username: string, skinTypeName: string, uv: number, riskLevel: string,
-  advice: ReturnType<typeof getAdvice>, actionText: string, dateStr: string, timeStr: string
-) {
-  return [
-    "SunGuard — UV Protection Report",
-    `For: ${username || "You"} | Skin: ${skinTypeName}`,
-    `Date: ${dateStr} ${timeStr}`,
-    "",
-    `UV Index: ${uv} | Risk: ${riskLevel}`,
-    "",
-    `Advice: ${advice.general}`,
-    `UV Note: ${advice.uvAdvice}`,
-    `Action: ${actionText}`,
-    "",
-    "Disclaimer: Always consult a health professional for medical advice.",
-  ].join("\n");
-}
-
 // ---------- REPORT MODAL ----------
 function UVReportModal({
   open, onClose, username, skinType, uvData,
@@ -75,9 +56,6 @@ function UVReportModal({
   open: boolean; onClose: () => void; username: string;
   skinType: number; uvData: { currentUV: number; location?: string };
 }) {
-  const [shareStatus, setShareStatus] = useState<"idle" | "copied" | "shared">("idle");
-  const printRef = useRef<HTMLDivElement>(null);
-
   if (!open) return null;
 
   const advice = getAdvice(skinType, uvData.currentUV);
@@ -94,169 +72,118 @@ function UVReportModal({
       ? "Apply SPF 30+ sunscreen. Wear protective clothing during extended outdoor activities."
       : "Apply SPF 50+ sunscreen. Seek shade during peak hours. Wear protective clothing and hat.";
 
-  // --- Print / Save as PDF ---
-  const handlePrint = () => {
-    if (!printRef.current) return;
-    const printContents = printRef.current.innerHTML;
-    const win = window.open("", "_blank", "width=700,height=900");
-    if (!win) return;
-    win.document.write(`
-      <html><head><title>SunGuard UV Report</title>
-      <style>
-        body { font-family: system-ui, sans-serif; padding: 32px; color: #0a0a0a; }
-        * { box-sizing: border-box; }
-      </style></head>
-      <body>${printContents}</body></html>
-    `);
-    win.document.close();
-    win.focus();
-    setTimeout(() => { win.print(); win.close(); }, 400);
-  };
-
-  // --- Share / copy ---
-  const handleShare = async () => {
-    const text = buildShareText(username, skinTypeName, uvData.currentUV, risk.level, advice, actionText, dateStr, timeStr);
-    if (navigator.share) {
-      try { await navigator.share({ title: "My SunGuard UV Report", text }); setShareStatus("shared"); } catch {}
-    } else {
-      await navigator.clipboard.writeText(text);
-      setShareStatus("copied");
-    }
-    setTimeout(() => setShareStatus("idle"), 2500);
-  };
-
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4"
       style={{ backgroundColor: "rgba(0,0,0,0.5)" }}
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-[620px] max-h-[92vh] flex flex-col">
-
-        {/* Scrollable report area */}
-        <div className="overflow-y-auto flex-1" ref={printRef}>
-          <div
-            className="rounded-t-3xl px-8 pt-8 pb-6 relative"
-            style={{ backgroundImage: "linear-gradient(135deg, #FF6900 0%, #f63b9a 100%)" }}
+      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-[600px] max-h-[90vh] overflow-y-auto">
+        {/* Report Header */}
+        <div
+          className="rounded-t-3xl px-8 pt-8 pb-6 relative"
+          style={{ backgroundImage: "linear-gradient(135deg, #FF6900 0%, #f63b9a 100%)" }}
+        >
+          <button
+            onClick={onClose}
+            className="absolute top-5 right-5 w-8 h-8 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center transition-colors cursor-pointer"
           >
-            <button
-              onClick={onClose}
-              className="absolute top-5 right-5 w-8 h-8 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center transition-colors cursor-pointer"
-            >
-              <X size={16} className="text-white" />
-            </button>
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center">
-                <Sun size={20} className="text-white" />
-              </div>
-              <div>
-                <p className="text-white/80 text-[12px] font-semibold uppercase tracking-widest">SunGuard</p>
-                <h2 className="text-white text-[22px] font-extrabold">UV Protection Report</h2>
-              </div>
+            <X size={16} className="text-white" />
+          </button>
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center">
+              <Sun size={20} className="text-white" />
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="bg-white/15 rounded-2xl px-4 py-3">
-                <p className="text-white/70 text-[11px] uppercase tracking-wide mb-0.5">Generated for</p>
-                <p className="text-white font-bold text-[15px]">{username || "You"}</p>
-              </div>
-              <div className="bg-white/15 rounded-2xl px-4 py-3">
-                <p className="text-white/70 text-[11px] uppercase tracking-wide mb-0.5">Skin Type</p>
-                <p className="text-white font-bold text-[15px]">{skinTypeName}</p>
-              </div>
-              <div className="bg-white/15 rounded-2xl px-4 py-3">
-                <p className="text-white/70 text-[11px] uppercase tracking-wide mb-0.5">Date</p>
-                <p className="text-white font-bold text-[13px]">{dateStr}</p>
-              </div>
-              <div className="bg-white/15 rounded-2xl px-4 py-3">
-                <p className="text-white/70 text-[11px] uppercase tracking-wide mb-0.5">Time</p>
-                <p className="text-white font-bold text-[15px]">{timeStr}</p>
-              </div>
+            <div>
+              <p className="text-white/80 text-[12px] font-semibold uppercase tracking-widest">SunGuard</p>
+              <h2 className="text-white text-[22px] font-extrabold">UV Protection Report</h2>
             </div>
           </div>
-
-          <div className="px-8 py-6 flex flex-col gap-5">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="bg-[#fff7ed] rounded-2xl p-5 flex flex-col items-center">
-                <p className="text-[#9f2d00] text-[12px] font-semibold uppercase tracking-wide mb-1">Current UV Index</p>
-                <p className="text-[#FF6900] text-[48px] font-extrabold leading-none">{uvData.currentUV}</p>
-              </div>
-              <div className="rounded-2xl p-5 flex flex-col items-center" style={{ backgroundColor: `${risk.color}18` }}>
-                <p className="text-[12px] font-semibold uppercase tracking-wide mb-1" style={{ color: risk.color }}>Your Risk Level</p>
-                <p className="text-[32px] font-extrabold leading-none" style={{ color: risk.color }}>{risk.level}</p>
-              </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="bg-white/15 rounded-2xl px-4 py-3">
+              <p className="text-white/70 text-[11px] uppercase tracking-wide mb-0.5">Generated for</p>
+              <p className="text-white font-bold text-[15px]">{username || "You"}</p>
             </div>
-
-            <div>
-              <p className="text-[#4a5565] text-[13px] font-semibold mb-2">Exposure Risk</p>
-              <div className="w-full h-3 bg-gray-100 rounded-full overflow-hidden">
-                <div className="h-full rounded-full" style={{ width: `${riskPercent}%`, backgroundColor: risk.color }} />
-              </div>
+            <div className="bg-white/15 rounded-2xl px-4 py-3">
+              <p className="text-white/70 text-[11px] uppercase tracking-wide mb-0.5">Skin Type</p>
+              <p className="text-white font-bold text-[15px]">{skinTypeName}</p>
             </div>
-
-            <div className="bg-[#eff6ff] rounded-2xl p-5">
-              <div className="flex items-center gap-2 mb-2">
-                <AlertCircle size={16} className="text-[#3B82F6]" />
-                <p className="text-[#1e40af] text-[14px] font-bold">General Advice</p>
-              </div>
-              <p className="text-[#1e40af] text-[14px] leading-relaxed">{advice.general}</p>
+            <div className="bg-white/15 rounded-2xl px-4 py-3">
+              <p className="text-white/70 text-[11px] uppercase tracking-wide mb-0.5">Date</p>
+              <p className="text-white font-bold text-[13px]">{dateStr}</p>
             </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="bg-[#fff7ed] rounded-2xl p-4">
-                <p className="text-[#9f2d00] text-[13px] font-bold mb-1">UV-Specific Advice</p>
-                <p className="text-[#4a5565] text-[13px] leading-relaxed">{advice.uvAdvice}</p>
-              </div>
-              <div className="bg-[#f0fdf4] rounded-2xl p-4">
-                <p className="text-[#166534] text-[13px] font-bold mb-1">Risk Summary</p>
-                <p className="text-[#4a5565] text-[13px] leading-relaxed">{advice.riskText}</p>
-              </div>
+            <div className="bg-white/15 rounded-2xl px-4 py-3">
+              <p className="text-white/70 text-[11px] uppercase tracking-wide mb-0.5">Time</p>
+              <p className="text-white font-bold text-[15px]">{timeStr}</p>
             </div>
-
-            <div className="bg-[#f0fdf4] border border-[#bbf7d0] rounded-2xl px-5 py-4 flex items-start gap-3">
-              <CheckCircle size={18} className="text-[#16a34a] shrink-0 mt-0.5" />
-              <div>
-                <p className="text-[#166534] text-[14px] font-bold mb-1">Recommended Action</p>
-                <p className="text-[#166534] text-[13px] leading-relaxed">{actionText}</p>
-              </div>
-            </div>
-
-            <div>
-              <p className="text-[#0a0a0a] text-[15px] font-bold mb-3">Sun Safety Tips</p>
-              <div className="grid grid-cols-2 gap-3">
-                {safetyTips.map((tip) => (
-                  <div key={tip.num} className="flex items-start gap-3 bg-[#fff9f5] rounded-xl p-4">
-                    <div className="w-7 h-7 rounded-full bg-[#ff6900] text-white text-[13px] flex items-center justify-center shrink-0 font-bold">{tip.num}</div>
-                    <div>
-                      <p className="text-[#0a0a0a] text-[13px] font-semibold">{tip.title}</p>
-                      <p className="text-[#6a7282] text-[12px]">{tip.desc}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <p className="text-center text-[#9ca3af] text-[11px]">
-              This report is personalised based on your skin type and the current UV index at the time of generation. Always consult a health professional for medical advice.
-            </p>
           </div>
         </div>
 
-        {/* Sticky action bar — Save as PDF + Share only */}
-        <div className="border-t border-gray-100 px-8 py-4 flex items-center gap-3 bg-white rounded-b-3xl shrink-0">
-          <button
-            onClick={handlePrint}
-            className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-[#eff6ff] hover:bg-[#dbeafe] text-[#1e40af] text-[13px] font-bold transition-all cursor-pointer"
-          >
-            <Printer size={15} /> Save as PDF
-          </button>
-          <button
-            onClick={handleShare}
-            className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-white text-[13px] font-bold transition-all cursor-pointer"
-            style={{ backgroundImage: "linear-gradient(135deg, #FF6900, #f63b9a)" }}
-          >
-            <Share2 size={15} />
-            {shareStatus === "copied" ? "Copied!" : shareStatus === "shared" ? "Shared!" : "Share"}
-          </button>
+        {/* Report Body */}
+        <div className="px-8 py-6 flex flex-col gap-5">
+          <div className="grid grid-cols-2 gap-4">
+            <div className="bg-[#fff7ed] rounded-2xl p-5 flex flex-col items-center">
+              <p className="text-[#9f2d00] text-[12px] font-semibold uppercase tracking-wide mb-1">Current UV Index</p>
+              <p className="text-[#FF6900] text-[48px] font-extrabold leading-none">{uvData.currentUV}</p>
+            </div>
+            <div className="rounded-2xl p-5 flex flex-col items-center" style={{ backgroundColor: `${risk.color}18` }}>
+              <p className="text-[12px] font-semibold uppercase tracking-wide mb-1" style={{ color: risk.color }}>Your Risk Level</p>
+              <p className="text-[32px] font-extrabold leading-none" style={{ color: risk.color }}>{risk.level}</p>
+            </div>
+          </div>
+
+          <div>
+            <p className="text-[#4a5565] text-[13px] font-semibold mb-2">Exposure Risk</p>
+            <div className="w-full h-3 bg-gray-100 rounded-full overflow-hidden">
+              <div className="h-full rounded-full transition-all duration-500" style={{ width: `${riskPercent}%`, backgroundColor: risk.color }} />
+            </div>
+          </div>
+
+          <div className="bg-[#eff6ff] rounded-2xl p-5">
+            <div className="flex items-center gap-2 mb-2">
+              <AlertCircle size={16} className="text-[#3B82F6]" />
+              <p className="text-[#1e40af] text-[14px] font-bold">General Advice</p>
+            </div>
+            <p className="text-[#1e40af] text-[14px] leading-relaxed">{advice.general}</p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="bg-[#fff7ed] rounded-2xl p-4">
+              <p className="text-[#9f2d00] text-[13px] font-bold mb-1">UV-Specific Advice</p>
+              <p className="text-[#4a5565] text-[13px] leading-relaxed">{advice.uvAdvice}</p>
+            </div>
+            <div className="bg-[#f0fdf4] rounded-2xl p-4">
+              <p className="text-[#166534] text-[13px] font-bold mb-1">Risk Summary</p>
+              <p className="text-[#4a5565] text-[13px] leading-relaxed">{advice.riskText}</p>
+            </div>
+          </div>
+
+          <div className="bg-[#f0fdf4] border border-[#bbf7d0] rounded-2xl px-5 py-4 flex items-start gap-3">
+            <CheckCircle size={18} className="text-[#16a34a] shrink-0 mt-0.5" />
+            <div>
+              <p className="text-[#166534] text-[14px] font-bold mb-1">Recommended Action</p>
+              <p className="text-[#166534] text-[13px] leading-relaxed">{actionText}</p>
+            </div>
+          </div>
+
+          <div>
+            <p className="text-[#0a0a0a] text-[15px] font-bold mb-3">Sun Safety Tips</p>
+            <div className="grid grid-cols-2 gap-3">
+              {safetyTips.map((tip) => (
+                <div key={tip.num} className="flex items-start gap-3 bg-[#fff9f5] rounded-xl p-4">
+                  <div className="w-7 h-7 rounded-full bg-[#ff6900] text-white text-[13px] flex items-center justify-center shrink-0 font-bold">{tip.num}</div>
+                  <div>
+                    <p className="text-[#0a0a0a] text-[13px] font-semibold">{tip.title}</p>
+                    <p className="text-[#6a7282] text-[12px]">{tip.desc}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <p className="text-center text-[#9ca3af] text-[11px]">
+            This report is personalised based on your skin type and the current UV index at the time of generation. Always consult a health professional for medical advice.
+          </p>
         </div>
       </div>
     </div>

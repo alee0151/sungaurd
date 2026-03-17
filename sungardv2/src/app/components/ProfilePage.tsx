@@ -79,7 +79,6 @@ function UVReportModal({
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       <div className="bg-white rounded-3xl shadow-2xl w-full max-w-[600px] max-h-[90vh] overflow-y-auto">
-        {/* Report Header */}
         <div
           className="rounded-t-3xl px-8 pt-8 pb-6 relative"
           style={{ backgroundImage: "linear-gradient(135deg, #FF6900 0%, #f63b9a 100%)" }}
@@ -119,7 +118,6 @@ function UVReportModal({
           </div>
         </div>
 
-        {/* Report Body */}
         <div className="px-8 py-6 flex flex-col gap-5">
           <div className="grid grid-cols-2 gap-4">
             <div className="bg-[#fff7ed] rounded-2xl p-5 flex flex-col items-center">
@@ -238,58 +236,62 @@ export default function ProfilePage() {
           </button>
         </div>
 
-        {/* Skin Type Selection */}
-        <div className="bg-white rounded-2xl border border-black/10 p-6">
-          <h3 className="text-[#0a0a0a] text-[16px]" style={{ fontWeight: 500 }}>Select Your Skin Type</h3>
-          <p className="text-[#717182] text-[14px] mt-1 mb-4">Choose the option that best describes your skin</p>
-          <div className="flex flex-col gap-2">
-            {skinTypes.map((type) => (
-              <button
-                key={type.id}
-                onClick={() => setSkinType(type.id)}
-                className={`w-full text-left px-5 py-3.5 rounded-xl border transition-all cursor-pointer ${
-                  skinType === type.id ? "bg-[#fff7ed] border-[#ff6900]" : "bg-white border-black/10 hover:bg-gray-50"
-                }`}
-              >
-                <div className="flex items-center gap-2">
-                  {skinType === type.id && <span className="w-2 h-2 rounded-full bg-[#0a0a0a]" />}
-                  <span className="text-[#0a0a0a] text-[14px]" style={{ fontWeight: 500 }}>{type.name}</span>
-                  {skinType === type.id && <CheckCircle size={16} className="text-[#00C950]" />}
-                  <span className="text-[#6a7282] text-[14px] ml-1">{type.desc}</span>
-                </div>
-              </button>
-            ))}
-          </div>
-        </div>
+        {/* Skin Type + UV Risk — side by side */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
 
-        {/* UV Exposure Risk */}
-        <div className="bg-white rounded-2xl border border-black/10 p-6">
-          <h3 className="text-[#0a0a0a] text-[16px]" style={{ fontWeight: 500 }}>Current UV Exposure Risk</h3>
-          <p className="text-[#717182] text-[14px] mt-1 mb-4">Based on current UV index and your skin type</p>
-          <div className="flex items-center justify-between mb-2">
-            <div>
-              <span className="text-[#4a5565] text-[13px]">Current UV Index</span>
-              <p className="text-[#0a0a0a] text-[24px]" style={{ fontWeight: 700 }}>{uvData.currentUV}</p>
-            </div>
-            <div className="text-right">
-              <span className="text-[#4a5565] text-[13px]">Your Risk Level</span>
-              <p className="text-[24px]" style={{ fontWeight: 700, color: risk.color }}>{risk.level}</p>
+          {/* Skin Type Selection */}
+          <div className="bg-white rounded-2xl border border-black/10 p-6 h-full">
+            <h3 className="text-[#0a0a0a] text-[16px]" style={{ fontWeight: 500 }}>Select Your Skin Type</h3>
+            <p className="text-[#717182] text-[14px] mt-1 mb-4">Choose the option that best describes your skin</p>
+            <div className="flex flex-col gap-2">
+              {skinTypes.map((type) => (
+                <button
+                  key={type.id}
+                  onClick={() => setSkinType(type.id)}
+                  className={`w-full text-left px-5 py-3.5 rounded-xl border transition-all cursor-pointer ${
+                    skinType === type.id ? "bg-[#fff7ed] border-[#ff6900]" : "bg-white border-black/10 hover:bg-gray-50"
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    {skinType === type.id && <span className="w-2 h-2 rounded-full bg-[#0a0a0a]" />}
+                    <span className="text-[#0a0a0a] text-[14px]" style={{ fontWeight: 500 }}>{type.name}</span>
+                    {skinType === type.id && <CheckCircle size={16} className="text-[#00C950]" />}
+                    <span className="text-[#6a7282] text-[14px] ml-1">{type.desc}</span>
+                  </div>
+                </button>
+              ))}
             </div>
           </div>
-          <div className="w-full h-3 bg-gray-200 rounded-full overflow-hidden">
-            <div className="h-full rounded-full transition-all duration-500" style={{ width: `${riskPercent}%`, backgroundColor: risk.color }} />
-          </div>
-          <div className="mt-4">
-            <p className="text-[#0a0a0a] text-[14px] mb-2" style={{ fontWeight: 600 }}>Recommended Actions:</p>
-            <div className="bg-[#f0fdf4] border border-[#bbf7d0] rounded-xl px-4 py-3 flex items-center gap-2">
-              <CheckCircle size={16} className="text-[#16a34a] shrink-0" />
-              <p className="text-[#166534] text-[13px]">
-                {risk.level === "Low"
-                  ? "Basic sun protection is sufficient. SPF 15+ recommended for extended outdoor time."
-                  : risk.level === "Moderate"
-                  ? "Apply SPF 30+ sunscreen. Wear protective clothing during extended outdoor activities."
-                  : "Apply SPF 50+ sunscreen. Seek shade during peak hours. Wear protective clothing and hat."}
-              </p>
+
+          {/* UV Exposure Risk */}
+          <div className="bg-white rounded-2xl border border-black/10 p-6 h-full">
+            <h3 className="text-[#0a0a0a] text-[16px]" style={{ fontWeight: 500 }}>Current UV Exposure Risk</h3>
+            <p className="text-[#717182] text-[14px] mt-1 mb-4">Based on current UV index and your skin type</p>
+            <div className="flex items-center justify-between mb-2">
+              <div>
+                <span className="text-[#4a5565] text-[13px]">Current UV Index</span>
+                <p className="text-[#0a0a0a] text-[24px]" style={{ fontWeight: 700 }}>{uvData.currentUV}</p>
+              </div>
+              <div className="text-right">
+                <span className="text-[#4a5565] text-[13px]">Your Risk Level</span>
+                <p className="text-[24px]" style={{ fontWeight: 700, color: risk.color }}>{risk.level}</p>
+              </div>
+            </div>
+            <div className="w-full h-3 bg-gray-200 rounded-full overflow-hidden">
+              <div className="h-full rounded-full transition-all duration-500" style={{ width: `${riskPercent}%`, backgroundColor: risk.color }} />
+            </div>
+            <div className="mt-4">
+              <p className="text-[#0a0a0a] text-[14px] mb-2" style={{ fontWeight: 600 }}>Recommended Actions:</p>
+              <div className="bg-[#f0fdf4] border border-[#bbf7d0] rounded-xl px-4 py-3 flex items-center gap-2">
+                <CheckCircle size={16} className="text-[#16a34a] shrink-0" />
+                <p className="text-[#166534] text-[13px]">
+                  {risk.level === "Low"
+                    ? "Basic sun protection is sufficient. SPF 15+ recommended for extended outdoor time."
+                    : risk.level === "Moderate"
+                    ? "Apply SPF 30+ sunscreen. Wear protective clothing during extended outdoor activities."
+                    : "Apply SPF 50+ sunscreen. Seek shade during peak hours. Wear protective clothing and hat."}
+                </p>
+              </div>
             </div>
           </div>
         </div>

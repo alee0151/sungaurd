@@ -5,6 +5,7 @@ import {
   Smile, CheckCircle, TrendingUp, Droplets, ShieldCheck,
 } from "lucide-react";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
+import { readUVCache, cacheAgeMinutes } from "../utils/uvCache";
 
 function getUVRisk(uv: number) {
   if (uv <= 2)  return { level: "Low",       color: "#00C950", bg: "#f0fdf4", border: "#bbf7d0", gradFrom: "#22c55e", gradTo: "#16a34a" };
@@ -14,12 +15,13 @@ function getUVRisk(uv: number) {
   return               { level: "Extreme",   color: "#9810FA", bg: "#faf5ff", border: "#e9d5ff", gradFrom: "#9810FA", gradTo: "#FB2C36" };
 }
 
+// Matches DashboardPage getFallbackRecommendation advice exactly
 function getRecommendation(uv: number): string {
-  if (uv <= 2)  return "SPF 15+ if outdoors. No special precautions needed.";
-  if (uv <= 5)  return "SPF 30+, wear a hat during midday hours.";
-  if (uv <= 7)  return "SPF 50+, seek shade between 10am–4pm.";
-  if (uv <= 10) return "SPF 50+, minimise outdoor exposure. Wear protective clothing.";
-  return               "Avoid being outside. SPF 50+ and full cover essential.";
+  if (uv <= 2)  return "UV is low — no sun protection needed right now.";
+  if (uv <= 5)  return "SPF 50+ required. Apply 20 min before heading out and reapply every 2 hours.";
+  if (uv <= 7)  return "High UV — SPF 50+ essential. Seek shade between 10 am – 3 pm.";
+  if (uv <= 10) return "Very high UV — apply SPF 50+ liberally, wear a broad-brimmed hat and limit time outdoors.";
+  return               "Extreme UV — avoid outdoor exposure where possible. SPF 50+ and full cover essential.";
 }
 
 function getTodayAppCount(): number {
@@ -42,6 +44,25 @@ function getTimerSecondsRemaining(): number | null {
   } catch { return null; }
 }
 
+// Read UV data from the shared cache that Layout/Dashboard writes to
+function readCachedUVForSavedLocation(): { uv: number; locationName: string } | null {
+  try {
+    const raw = localStorage.getItem("sunguard_uv_cache");
+    if (!raw) return null;
+    const entries: any[] = JSON.parse(raw);
+    if (!entries.length) return null;
+    // Use the most recently fetched entry (Dashboard always writes the active location)
+    const sorted = [...entries].sort((a, b) => b.fetchedAt - a.fetchedAt);
+    const best = sorted[0];
+    // Only use it if it's within 60 minutes (same TTL as Layout)
+    const ageMin = (Date.now() - best.fetchedAt) / 60000;
+    if (ageMin > 60) return null;
+    return { uv: best.uv, locationName: best.locationName };
+  } catch { return null; }
+}
+
+const OW_API_KEY = (import.meta as any).env?.VITE_OPENWEATHER_API_KEY;
+
 export default function LandingPage() {
   const [isLoggedIn, setIsLoggedIn]   = useState(false);
   const [username, setUsername]       = useState("");
@@ -51,15 +72,13 @@ export default function LandingPage() {
   const [appCountToday, setAppCountToday]           = useState(0);
   const [timerSecsRemaining, setTimerSecsRemaining] = useState<number | null>(null);
 
-  const OW_API_KEY = (import.meta as any).env?.VITE_OPENWEATHER_API_KEY;
-
   useEffect(() => {
     const stored     = localStorage.getItem("sunguard_loggedin");
     const storedUser = localStorage.getItem("sunguard_username");
     if (stored === "true" && storedUser) {
       setIsLoggedIn(true);
       setUsername(storedUser);
-      fetchUVForUser();
+      loadUV();
     }
     setAppCountToday(getTodayAppCount());
     setTimerSecsRemaining(getTimerSecondsRemaining());
@@ -67,7 +86,16 @@ export default function LandingPage() {
     return () => clearInterval(tick);
   }, []);
 
-  async function fetchUVForUser() {
+  async function loadUV() {
+    // 1. Try the shared UV cache first — this is what Dashboard writes to
+    const cached = readCachedUVForSavedLocation();
+    if (cached) {
+      setUvIndex(cached.uv);
+      setLocation(cached.locationName);
+      return;
+    }
+
+    // 2. Fall back to fetching fresh UV (same logic as before)
     setUvLoading(true);
     const savedLocation = localStorage.getItem("sunguard_location");
     try {
@@ -121,7 +149,6 @@ export default function LandingPage() {
   const risk           = uvIndex !== null ? getUVRisk(uvIndex) : null;
   const recommendation = uvIndex !== null ? getRecommendation(uvIndex) : null;
 
-  // Reminder badge logic
   const timerActive  = timerSecsRemaining !== null && timerSecsRemaining > 0;
   const timerExpired = timerSecsRemaining === 0;
   const timerMins    = timerActive ? Math.ceil(timerSecsRemaining! / 60) : 0;
@@ -134,7 +161,7 @@ export default function LandingPage() {
 
   if (timerExpired) {
     reminderIcon      = <Bell size={15} className="text-red-500 animate-pulse" />;
-    reminderText      = "Reapply sunscreen now! ⚠️";
+    reminderText      = "Reapply sunscreen now! \u26a0\ufe0f";
     reminderBg        = "#fff1f2";
     reminderBorder    = "#fecdd3";
     reminderTextColor = "#be123c";
@@ -143,19 +170,19 @@ export default function LandingPage() {
     const m = timerMins % 60;
     const timeStr = h > 0 ? `${h}h ${m}m` : `${m}m`;
     reminderIcon      = <ShieldCheck size={15} className="text-green-500" />;
-    reminderText      = `Protected · reapply in ${timeStr}`;
+    reminderText      = `Protected \u00b7 reapply in ${timeStr}`;
     reminderBg        = "#f0fdf4";
     reminderBorder    = "#bbf7d0";
     reminderTextColor = "#15803d";
   } else if (appCountToday > 0) {
     reminderIcon      = <Droplets size={15} className="text-blue-500" />;
-    reminderText      = `Applied ${appCountToday}× today`;
+    reminderText      = `Applied ${appCountToday}\u00d7 today`;
     reminderBg        = "#eff6ff";
     reminderBorder    = "#bfdbfe";
     reminderTextColor = "#1d4ed8";
   } else {
     reminderIcon      = <Bell size={15} className="text-pink-500" />;
-    reminderText      = "Reapply sunscreen ⚠️";
+    reminderText      = "Reapply sunscreen \u26a0\ufe0f";
     reminderBg        = "white";
     reminderBorder    = "#fce7f3";
     reminderTextColor = "#101828";
@@ -243,7 +270,7 @@ export default function LandingPage() {
                   >
                     <Sun size={22} className="text-white mb-0.5" />
                     <span className="text-white text-[20px] font-extrabold leading-none">
-                      {uvLoading ? "…" : uvIndex ?? "—"}
+                      {uvLoading ? "\u2026" : uvIndex ?? "\u2014"}
                     </span>
                   </div>
                   <div>
@@ -263,7 +290,7 @@ export default function LandingPage() {
                     <CheckCircle size={22} className="text-blue-500" />
                   </div>
                   <div>
-                    <p className="text-[12px] font-semibold uppercase tracking-widest text-blue-500 mb-1">Today's Recommendation</p>
+                    <p className="text-[12px] font-semibold uppercase tracking-widest text-blue-500 mb-1">Today&apos;s Recommendation</p>
                     <p className="text-[#101828] text-[15px] font-semibold leading-snug">
                       {uvLoading ? "Fetching advice..." : recommendation ?? "Sign in to get personalised advice."}
                     </p>
@@ -280,13 +307,13 @@ export default function LandingPage() {
               {/* Left copy */}
               <div className="flex-1 max-w-[580px]">
                 <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-orange-100 text-orange-600 font-bold text-[13px] mb-6 border border-orange-200">
-                  ☀️ Real-time UV for your exact location
+                  &#9728;&#65039; Real-time UV for your exact location
                 </div>
 
                 <h1 className="text-[52px] md:text-[68px] font-extrabold text-[#101828] leading-[1.05] tracking-tight mb-5">
                   Don&apos;t get <br />
                   <span className="text-transparent bg-clip-text" style={{ backgroundImage: "linear-gradient(90deg, #FF6900, #f63b9a)" }}>
-                    fried 🔥
+                    fried &#128293;
                   </span>
                 </h1>
 
@@ -298,9 +325,9 @@ export default function LandingPage() {
 
                 <div className="flex flex-wrap gap-6 mb-8">
                   {[
-                    { emoji: "🌞", label: "Live UV Index" },
-                    { emoji: "📍", label: "Your exact location" },
-                    { emoji: "⏰", label: "Reapply reminders" },
+                    { emoji: "\uD83C\uDF1E", label: "Live UV Index" },
+                    { emoji: "\uD83D\uDCCD", label: "Your exact location" },
+                    { emoji: "\u23F0", label: "Reapply reminders" },
                   ].map((s) => (
                     <div key={s.label} className="flex items-center gap-2">
                       <span className="text-[20px]">{s.emoji}</span>
@@ -339,7 +366,7 @@ export default function LandingPage() {
 
                 {isLoggedIn && (
                   <div className="mt-6 inline-flex items-center gap-3 bg-green-50 border border-green-200 rounded-2xl px-5 py-3">
-                    <span className="text-[22px]">👋</span>
+                    <span className="text-[22px]">&#128075;</span>
                     <div>
                       <p className="text-green-800 text-[13px] font-bold">Hey {username}, you&apos;re back!</p>
                       <p className="text-green-600 text-[12px]">Check today&apos;s UV levels in My Sun Check.</p>
@@ -378,7 +405,7 @@ export default function LandingPage() {
                         UV {uvIndex} &mdash; {risk?.level}
                       </p>
                     ) : (
-                      <p className="text-[15px] font-extrabold text-[#101828]">UV — —</p>
+                      <p className="text-[15px] font-extrabold text-[#101828]">UV &mdash; &mdash;</p>
                     )}
                   </div>
                 </div>
@@ -410,9 +437,9 @@ export default function LandingPage() {
                 <h2 className="text-[32px] md:text-[38px] font-extrabold text-[#101828] tracking-tight mb-10">3 steps to safer sun time</h2>
                 <div className="flex flex-col gap-5">
                   {[
-                    { step: "01", emoji: "📲", color: "from-orange-400 to-pink-500", bg: "bg-orange-50", title: "Share your location", desc: "SunGuard pulls live UV data for wherever you are — beach, park, city, wherever." },
-                    { step: "02", emoji: "🧬", color: "from-blue-400 to-violet-500", bg: "bg-blue-50",   title: "Set your skin type",  desc: "We crunch your skin tone + the UV level to give you advice that actually fits you." },
-                    { step: "03", emoji: "⏰", color: "from-green-400 to-teal-500",  bg: "bg-green-50",  title: "Get reminders",       desc: "Set a sunscreen timer and we'll ping you when it's time to reapply. Easy." },
+                    { step: "01", emoji: "\uD83D\uDCF2", color: "from-orange-400 to-pink-500", bg: "bg-orange-50", title: "Share your location", desc: "SunGuard pulls live UV data for wherever you are \u2014 beach, park, city, wherever." },
+                    { step: "02", emoji: "\uD83E\uDDEC", color: "from-blue-400 to-violet-500", bg: "bg-blue-50",   title: "Set your skin type",  desc: "We crunch your skin tone + the UV level to give you advice that actually fits you." },
+                    { step: "03", emoji: "\u23F0",        color: "from-green-400 to-teal-500",  bg: "bg-green-50",  title: "Get reminders",       desc: "Set a sunscreen timer and we\u2019ll ping you when it\u2019s time to reapply. Easy." },
                   ].map((s) => (
                     <div key={s.step} className={`${s.bg} rounded-2xl p-6 relative overflow-hidden flex items-start gap-5`}>
                       <span className="absolute top-3 right-5 text-[48px] font-extrabold text-black/5 select-none leading-none">{s.step}</span>
@@ -431,7 +458,7 @@ export default function LandingPage() {
                 <div className="flex flex-col gap-4">
                   {[
                     { icon: Activity, grad: "from-blue-400 to-violet-500",  title: "Live UV tracking",         desc: "Minute-by-minute UV index for your exact spot, not just your city." },
-                    { icon: MapPin,   grad: "from-orange-400 to-pink-500",  title: "Interactive UV map",        desc: "Tap anywhere on the map to see UV levels — great for planning your day." },
+                    { icon: MapPin,   grad: "from-orange-400 to-pink-500",  title: "Interactive UV map",        desc: "Tap anywhere on the map to see UV levels \u2014 great for planning your day." },
                     { icon: Smile,    grad: "from-green-400 to-teal-500",   title: "Skin type personalisation", desc: "Your skin tone = your advice. No generic tips, only what applies to you." },
                     { icon: Bell,     grad: "from-pink-400 to-rose-500",    title: "Sunscreen timer",           desc: "Tap once when you apply sunscreen and we remind you to reapply in 2 hours." },
                   ].map((f, i) => (
@@ -460,9 +487,9 @@ export default function LandingPage() {
             </div>
             <div className="grid md:grid-cols-3 gap-6">
               {[
-                { quote: "I literally got a sunburn every summer before this app. Now I actually reapply.", name: "Mia, 21 🇦🇺" },
-                { quote: "The UV map is so sick. I check it before every surf session.",                    name: "Jake, 19 🏄" },
-                { quote: "Finally an app that doesn't talk to me like I'm 50. The reminders are so helpful.", name: "Priya, 22 ✨" },
+                { quote: "I literally got a sunburn every summer before this app. Now I actually reapply.", name: "Mia, 21 \uD83C\uDDE6\uD83C\uDDFA" },
+                { quote: "The UV map is so sick. I check it before every surf session.",                    name: "Jake, 19 \uD83C\uDFC4" },
+                { quote: "Finally an app that doesn't talk to me like I'm 50. The reminders are so helpful.", name: "Priya, 22 \u2728" },
               ].map((t, i) => (
                 <div key={i} className="bg-white border border-orange-100 rounded-3xl p-7">
                   <p className="text-[32px] text-orange-400 leading-none mb-2">&ldquo;</p>
@@ -503,7 +530,7 @@ export default function LandingPage() {
           <div className="max-w-[700px] mx-auto px-6 relative z-10 text-center">
             {isLoggedIn ? (
               <>
-                <p className="text-white/80 text-[14px] font-bold uppercase tracking-widest mb-4">You&apos;re already in 🤙</p>
+                <p className="text-white/80 text-[14px] font-bold uppercase tracking-widest mb-4">You&apos;re already in &#129305;</p>
                 <h2 className="text-[42px] md:text-[52px] font-extrabold text-white mb-5 leading-tight">Hey {username}, <br />go check your UV</h2>
                 <p className="text-white/80 text-[18px] mb-10">Your Sun Check is ready and waiting.</p>
                 <Link to="/dashboard" className="inline-flex items-center gap-2 bg-white px-10 py-4 rounded-2xl text-[18px] font-extrabold hover:bg-gray-50 transition-all hover:scale-105 shadow-xl" style={{ color: "#FF6900" }}>
@@ -513,7 +540,7 @@ export default function LandingPage() {
             ) : (
               <>
                 <p className="text-white/80 text-[14px] font-bold uppercase tracking-widest mb-4">It&apos;s free, always</p>
-                <h2 className="text-[42px] md:text-[52px] font-extrabold text-white mb-5 leading-tight">Stop guessing. <br />Start checking. ☀️</h2>
+                <h2 className="text-[42px] md:text-[52px] font-extrabold text-white mb-5 leading-tight">Stop guessing. <br />Start checking. &#9728;&#65039;</h2>
                 <p className="text-white/80 text-[18px] mb-10">Takes 30 seconds to sign up. Your skin will thank you.</p>
                 <Link to="/signup" className="inline-flex items-center gap-2 bg-white px-10 py-4 rounded-2xl text-[18px] font-extrabold hover:bg-gray-50 transition-all hover:scale-105 shadow-xl" style={{ color: "#FF6900" }}>
                   Create my free account <ChevronRight size={22} />
@@ -531,7 +558,7 @@ export default function LandingPage() {
             <Sun className="text-orange-400" size={22} strokeWidth={2} />
             <span className="text-[18px] font-extrabold tracking-tight">SunGuard</span>
           </div>
-          <div className="text-gray-500 text-[13px]">&copy; {new Date().getFullYear()} SunGuard. Made with ☕ for sun-lovers.</div>
+          <div className="text-gray-500 text-[13px]">&copy; {new Date().getFullYear()} SunGuard. Made with &#9749; for sun-lovers.</div>
           <div className="flex gap-6 text-[13px] text-gray-500">
             <a href="#" className="hover:text-white transition-colors">Privacy</a>
             <a href="#" className="hover:text-white transition-colors">Terms</a>

@@ -1,7 +1,10 @@
-import { AlertTriangle, Shield, Clock, TrendingUp, Sun, MapPin, RefreshCw, Zap, LocateFixed, Search, X } from "lucide-react";
 import {
-  AreaChart, Area,
-  XAxis, YAxis, CartesianGrid, Tooltip,
+  AlertTriangle, Shield, Clock, TrendingUp, Sun, MapPin, RefreshCw,
+  Zap, LocateFixed, Search, X, Eye, Shirt, Umbrella, Activity,
+  Info, ChevronDown, ChevronUp, Lightbulb,
+} from "lucide-react";
+import {
+  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
   ReferenceLine, ResponsiveContainer,
 } from "recharts";
 import { useAppContext } from "./Layout";
@@ -9,11 +12,10 @@ import { UVMap } from "./UVMap";
 import { useEffect, useState, useCallback, useRef } from "react";
 import type { CSSProperties } from "react";
 import {
-  readUVCache,
-  writeUVCache,
-  cacheAgeMinutes,
-  type UVCacheEntry,
+  readUVCache, writeUVCache, cacheAgeMinutes, type UVCacheEntry,
 } from "../utils/uvCache";
+
+// ─── Constants & helpers ─────────────────────────────────────────────────────
 
 const uvScale = [
   { label: "Low (0-2)",        color: "#00C950" },
@@ -24,56 +26,106 @@ const uvScale = [
 ];
 
 function getUVRange(uv: number) {
-  if (uv <= 2)  return "0-2";
-  if (uv <= 5)  return "3-5";
-  if (uv <= 7)  return "6-7";
-  if (uv <= 10) return "8-10";
-  return "11+";
+  if (uv <= 2) return "0-2"; if (uv <= 5) return "3-5";
+  if (uv <= 7) return "6-7"; if (uv <= 10) return "8-10"; return "11+";
 }
-
 function getForecastGradientColor(maxUV: number): string {
-  if (maxUV <= 2)  return "#00C950";
-  if (maxUV <= 5)  return "#F0B100";
-  if (maxUV <= 7)  return "#FF6900";
-  if (maxUV <= 10) return "#FB2C36";
-  return "#9810FA";
+  if (maxUV <= 2) return "#00C950"; if (maxUV <= 5) return "#F0B100";
+  if (maxUV <= 7) return "#FF6900"; if (maxUV <= 10) return "#FB2C36"; return "#9810FA";
 }
-
 function getRiskDescription(uv: number): string {
-  if (uv <= 2)  return "Safe to be outside — no protection needed.";
-  if (uv <= 5)  return "Some risk — apply SPF 50+ before heading out.";
-  if (uv <= 7)  return "High risk — sunscreen, hat & shade are essential.";
-  if (uv <= 10) return "Very high risk — limit time outdoors, cover up.";
-  return "Extreme risk — avoid the sun where possible.";
+  if (uv <= 2) return "Safe to be outside \u2014 no protection needed.";
+  if (uv <= 5) return "Some risk \u2014 apply SPF 50+ before heading out.";
+  if (uv <= 7) return "High risk \u2014 sunscreen, hat & shade are essential.";
+  if (uv <= 10) return "Very high risk \u2014 limit time outdoors, cover up.";
+  return "Extreme risk \u2014 avoid the sun where possible.";
 }
-
 function getPeakHoursDescription(peakHours: string): string {
-  if (peakHours === "No peak hours today") return "UV stays low all day — no high-risk window today.";
-  return "UV ≥ 6 during this window — stay in the shade and reapply SPF.";
+  if (peakHours === "No peak hours today") return "UV stays low all day \u2014 no high-risk window today.";
+  return "UV \u2265 6 during this window \u2014 stay in the shade and reapply SPF.";
 }
 
 type SunscreenRecommendation = { riskLevel: string; spfLevel: string; advice: string };
-
 function getFallbackRecommendation(uv: number): SunscreenRecommendation {
-  if (uv <= 2)  return { riskLevel: "Low",       spfLevel: "No sunscreen required", advice: "UV index is low — sun protection is generally not needed. You can enjoy time outdoors without sunscreen, though a hat is still a good habit." };
+  if (uv <= 2)  return { riskLevel: "Low",       spfLevel: "No sunscreen required", advice: "UV index is low \u2014 sun protection is generally not needed. Enjoy time outdoors, though a hat is still a good habit." };
   if (uv <= 5)  return { riskLevel: "Moderate",  spfLevel: "SPF 50+", advice: "Apply SPF 50+ sunscreen 20 minutes before going outside and reapply every 2 hours. Wear a broad-brimmed hat and UV-protective sunglasses." };
-  if (uv <= 7)  return { riskLevel: "High",      spfLevel: "SPF 50+", advice: "SPF 50+ is essential. Apply generously 20 minutes before sun exposure and reapply every 2 hours or after swimming/sweating. Seek shade during peak hours and cover up with sun-protective clothing." };
-  if (uv <= 10) return { riskLevel: "Very High", spfLevel: "SPF 50+", advice: "Maximum protection required. Apply SPF 50+ liberally, wear long sleeves, a broad-brimmed hat, and UV-wrap sunglasses. Minimise time outdoors between 10 am and 3 pm and reapply sunscreen every 2 hours." };
-  return         { riskLevel: "Extreme",  spfLevel: "SPF 50+", advice: "Extreme UV — avoid outdoor exposure where possible. If you must go outside, apply SPF 50+ to all exposed skin, wear full-coverage sun-protective clothing, a broad-brimmed hat, and UV-wrap sunglasses. Reapply sunscreen every 2 hours." };
+  if (uv <= 7)  return { riskLevel: "High",      spfLevel: "SPF 50+", advice: "SPF 50+ is essential. Apply generously 20 minutes before sun exposure and reapply every 2 hours or after swimming/sweating. Seek shade during peak hours." };
+  if (uv <= 10) return { riskLevel: "Very High", spfLevel: "SPF 50+", advice: "Maximum protection required. Apply SPF 50+ liberally, wear long sleeves, a broad-brimmed hat, and UV-wrap sunglasses. Minimise time outdoors between 10 am and 3 pm." };
+  return         { riskLevel: "Extreme",  spfLevel: "SPF 50+", advice: "Extreme UV \u2014 avoid outdoor exposure where possible. If you must go outside, apply SPF 50+ to all exposed skin, wear full-coverage clothing, a broad-brimmed hat, and UV-wrap sunglasses." };
 }
-
 function formatFetchTime(date: Date): string {
   return date.toLocaleTimeString("en-AU", { hour: "2-digit", minute: "2-digit", hour12: true });
 }
+
+// ─── Burn time estimator data (based on WHO / SWA guidelines) ────────────────
+// Minutes to burn for skin type I at UV 1, scaled by UV and skin type factor
+const SKIN_TYPES = [
+  { id: 1, label: "Type I",   desc: "Always burns, never tans",          factor: 1.0,  example: "Very fair, freckles, red/blonde hair" },
+  { id: 2, label: "Type II",  desc: "Usually burns, tans minimally",     factor: 1.5,  example: "Fair skin, blue/hazel eyes" },
+  { id: 3, label: "Type III", desc: "Sometimes burns, tans gradually",   factor: 2.5,  example: "Medium skin, brown hair/eyes" },
+  { id: 4, label: "Type IV",  desc: "Rarely burns, tans easily",         factor: 4.0,  example: "Olive/light brown skin" },
+  { id: 5, label: "Type V",   desc: "Very rarely burns, tans very easily",factor: 8.0,  example: "Brown/dark brown skin" },
+  { id: 6, label: "Type VI",  desc: "Never burns",                        factor: 15.0, example: "Deeply pigmented dark skin" },
+];
+// Unprotected burn time (min) = (200 * skinFactor) / UV  (simplified Diffey formula)
+function burnTimeMinutes(uv: number, skinFactor: number): number {
+  if (uv <= 0) return 999;
+  return Math.round((200 * skinFactor) / uv);
+}
+function fmtBurnTime(mins: number): string {
+  if (mins >= 999) return "No risk";
+  if (mins >= 60) return `${Math.floor(mins / 60)}h ${mins % 60}m`;
+  return `${mins} min`;
+}
+
+// ─── UV health effects per level ─────────────────────────────────────────────
+function getHealthEffects(uv: number) {
+  const base = [
+    { icon: "skin",  label: "Skin",  effect: uv <= 2 ? "No sunburn risk" : uv <= 5 ? "Sunburn possible within ~1 hr (Type I skin)" : uv <= 7 ? "Sunburn in as little as 25 min" : uv <= 10 ? "Sunburn in under 20 min" : "Sunburn in under 10 min" },
+    { icon: "eye",   label: "Eyes",  effect: uv <= 2 ? "Minimal eye risk" : uv <= 5 ? "UV-protective sunglasses advised" : "UV sunglasses essential \u2014 photokeratitis risk" },
+    { icon: "dna",   label: "DNA",   effect: uv <= 2 ? "Low DNA damage risk" : uv <= 5 ? "DNA damage begins \u2014 cumulative over lifetime" : "Active DNA damage \u2014 increases skin cancer risk" },
+    { icon: "immune",label: "Immune",effect: uv <= 2 ? "No immunosuppression" : "Prolonged exposure can suppress local immune response" },
+  ];
+  return base;
+}
+
+// ─── Protection checklist per UV level ───────────────────────────────────────
+function getProtectionChecklist(uv: number) {
+  const always = [
+    { done: uv >= 3, label: "SPF 50+ sunscreen (apply 20 min before going out)" },
+    { done: uv >= 3, label: "Reapply every 2 hours or after swimming/sweating" },
+  ];
+  const extra = [
+    { done: uv >= 3, label: "Broad-brimmed hat (covers face, neck, ears)" },
+    { done: uv >= 3, label: "UV-protective wrap-around sunglasses" },
+    { done: uv >= 6, label: "Seek shade between 10 am \u2013 3 pm" },
+    { done: uv >= 6, label: "Sun-protective (UPF 50+) clothing" },
+    { done: uv >= 8, label: "Long sleeves & pants" },
+    { done: uv >= 11, label: "Avoid outdoor exposure entirely if possible" },
+  ];
+  return [...always, ...extra];
+}
+
+// ─── Did-you-know facts ───────────────────────────────────────────────────────
+const UV_FACTS = [
+  "2 in 3 Australians will be diagnosed with skin cancer by age 70 — one of the world's highest rates. (ARPANSA)",
+  "UV radiation is present even on cloudy days — clouds block only 10\u201320% of UV. (WHO)",
+  "Sand reflects up to 15% of UV, snow up to 80%, and water up to 10%. (WHO)",
+  "UV increases ~10\u201312% for every 1,000 m gain in altitude. (WHO)",
+  "UVA rays penetrate glass \u2014 window-side exposure still causes skin ageing. (Skin Cancer Foundation)",
+  "Sunscreen degrades in UV light \u2014 SPF 50 applied at 8 am offers minimal protection by 10 am without reapplication. (Cancer Council AU)",
+  "You need ~35 mL (7 teaspoons) to cover your whole body correctly. (Australian Prescriber)",
+  "The teaspoon rule: 1 tsp per arm, per leg, front torso, back torso, and face/neck. (Cancer Council AU)",
+  "UV damage is cumulative and irreversible \u2014 even one bad sunburn in childhood increases lifetime cancer risk. (Skin Cancer Foundation)",
+  "Tanning beds use UVA \u2014 they still increase melanoma risk despite not causing immediate redness. (ABC Science)",
+];
 
 const OW_API_KEY = import.meta.env.VITE_OPENWEATHER_API_KEY;
 const backendUrl = import.meta.env.VITE_BACKEND_URL;
 
 async function fetchFullUV(lat: number, lon: number): Promise<{ uv: number; hourlyForecast: { time: string; uv: number }[] }> {
   if (!OW_API_KEY) return { uv: 0, hourlyForecast: [] };
-  const res = await fetch(
-    `https://api.openweathermap.org/data/3.0/onecall?lat=${lat}&lon=${lon}&exclude=minutely,daily,alerts&appid=${OW_API_KEY}&units=metric`
-  );
+  const res = await fetch(`https://api.openweathermap.org/data/3.0/onecall?lat=${lat}&lon=${lon}&exclude=minutely,daily,alerts&appid=${OW_API_KEY}&units=metric`);
   if (!res.ok) throw new Error(`OW API ${res.status}`);
   const data = await res.json();
   const uv = Math.round((data.current?.uvi ?? 0) * 10) / 10;
@@ -84,7 +136,6 @@ async function fetchFullUV(lat: number, lon: number): Promise<{ uv: number; hour
   }));
   return { uv, hourlyForecast };
 }
-
 async function reverseGeocodeLocation(lat: number, lon: number): Promise<string> {
   try {
     const res = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json`, { headers: { "Accept-Language": "en" } });
@@ -96,21 +147,16 @@ async function reverseGeocodeLocation(lat: number, lon: number): Promise<string>
   } catch { /* ignore */ }
   return "Your Location";
 }
-
 async function geocodeSearch(query: string): Promise<{ lat: number; lon: number; displayName: string } | null> {
   try {
-    const res = await fetch(
-      `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=1`,
-      { headers: { "Accept-Language": "en" } }
-    );
+    const res = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=1`, { headers: { "Accept-Language": "en" } });
     const data = await res.json();
-    if (data?.length > 0) {
-      return { lat: parseFloat(data[0].lat), lon: parseFloat(data[0].lon), displayName: data[0].display_name.split(",").slice(0, 3).join(",") };
-    }
+    if (data?.length > 0) return { lat: parseFloat(data[0].lat), lon: parseFloat(data[0].lon), displayName: data[0].display_name.split(",").slice(0, 3).join(",") };
   } catch { /* ignore */ }
   return null;
 }
 
+// ─── Component ────────────────────────────────────────────────────────────────
 export default function DashboardPage() {
   const { uvData, setUVDataOverrides } = useAppContext();
   const { currentUV, riskLevel, riskColor, peakHours, hourlyForecast, locationName, uvLoading, uvFromCache, uvCacheAgeMinutes } = uvData;
@@ -120,12 +166,15 @@ export default function DashboardPage() {
   const [fetchedAt, setFetchedAt]       = useState<Date | null>(null);
   const [locating, setLocating]         = useState(false);
   const [locError, setLocError]         = useState<string | null>(null);
-
-  // Search bar state
   const [searchQuery, setSearchQuery]   = useState("");
   const [searching, setSearching]       = useState(false);
   const [searchError, setSearchError]   = useState<string | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
+
+  // Burn time estimator state
+  const [selectedSkinType, setSelectedSkinType] = useState(2); // default Type II
+  const [showChecklist, setShowChecklist]        = useState(true);
+  const [factIndex, setFactIndex]                = useState(() => Math.floor(Math.random() * UV_FACTS.length));
 
   useEffect(() => { if (!uvLoading) setFetchedAt(new Date()); }, [uvLoading, currentUV]);
 
@@ -136,9 +185,7 @@ export default function DashboardPage() {
         const r = await fetch(`${backendUrl}/uv/recommendation?uvLevel=${currentUV}`);
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         setSunscreenRec(await r.json()); setRecSource("backend");
-      } catch {
-        setSunscreenRec(getFallbackRecommendation(currentUV)); setRecSource("fallback");
-      }
+      } catch { setSunscreenRec(getFallbackRecommendation(currentUV)); setRecSource("fallback"); }
     }
     fetchRecommendation();
   }, [currentUV]);
@@ -161,28 +208,21 @@ export default function DashboardPage() {
           writeUVCache(entry);
           setUVDataOverrides({ uv: uvResult.uv, locationName: locName, hourlyForecast: uvResult.hourlyForecast, fromCache: false, cacheAgeMinutes: 0 });
           setFetchedAt(new Date());
-        } catch (err) {
-          console.error("[DashboardPage] location fetch error", err);
-          setLocError("Failed to fetch UV for your location. Please try again.");
-        } finally { setLocating(false); }
+        } catch (err) { console.error("[DashboardPage] location fetch error", err); setLocError("Failed to fetch UV for your location. Please try again."); }
+        finally { setLocating(false); }
       },
-      (err) => {
-        console.error("[DashboardPage] geolocation error", err);
-        setLocError("Location access denied. Please enable location permissions.");
-        setLocating(false);
-      },
+      (err) => { console.error("[DashboardPage] geolocation error", err); setLocError("Location access denied. Please enable location permissions."); setLocating(false); },
       { enableHighAccuracy: true, timeout: 10000 }
     );
   }, [setUVDataOverrides]);
 
   const handleSearchLocation = useCallback(async (e?: React.FormEvent) => {
     e?.preventDefault();
-    const q = searchQuery.trim();
-    if (!q) return;
+    const q = searchQuery.trim(); if (!q) return;
     setSearching(true); setSearchError(null); setLocError(null);
     try {
       const result = await geocodeSearch(q);
-      if (!result) { setSearchError(`No results found for “${q}”. Try a city or suburb name.`); setSearching(false); return; }
+      if (!result) { setSearchError(`No results found for \u201c${q}\u201d. Try a city or suburb name.`); setSearching(false); return; }
       const { lat, lon, displayName } = result;
       const cached = readUVCache(lat, lon);
       if (cached && cached.hourlyForecast.length > 0) {
@@ -195,10 +235,8 @@ export default function DashboardPage() {
       writeUVCache(entry);
       setUVDataOverrides({ uv: uvResult.uv, locationName: displayName, hourlyForecast: uvResult.hourlyForecast, fromCache: false, cacheAgeMinutes: 0 });
       setFetchedAt(new Date()); setSearchQuery("");
-    } catch (err) {
-      console.error("[DashboardPage] search error", err);
-      setSearchError("Failed to fetch UV for that location. Please try again.");
-    } finally { setSearching(false); }
+    } catch (err) { console.error("[DashboardPage] search error", err); setSearchError("Failed to fetch UV for that location. Please try again."); }
+    finally { setSearching(false); }
   }, [searchQuery, setUVDataOverrides]);
 
   const savedLocation = localStorage.getItem("sunguard_location") || undefined;
@@ -206,11 +244,30 @@ export default function DashboardPage() {
   const yAxisMax      = Math.max(4, Math.ceil(maxForecastUV * 1.2));
   const forecastColor = getForecastGradientColor(maxForecastUV);
 
+  // Derived data for new sections
+  const selectedSkin    = SKIN_TYPES[selectedSkinType - 1];
+  const burnMins        = burnTimeMinutes(currentUV, selectedSkin.factor);
+  const protectedMins   = burnTimeMinutes(currentUV / 50, selectedSkin.factor); // rough SPF-50 estimate
+  const healthEffects   = getHealthEffects(currentUV);
+  const checklist       = getProtectionChecklist(currentUV);
+  const activeChecklist = checklist.filter(c => c.done);
+
+  const recCardStyle =
+    currentUV <= 2  ? { bg: "bg-[#f0fdf4]", border: "border-[#bbf7d0]", iconColor: "text-[#00C950]" } :
+    currentUV <= 5  ? { bg: "bg-[#fefce8]", border: "border-[#fde68a]", iconColor: "text-[#F0B100]" } :
+    currentUV <= 7  ? { bg: "bg-[#fff7ed]", border: "border-[#ff6900]", iconColor: "text-[#FF6900]" } :
+    currentUV <= 10 ? { bg: "bg-[#fff1f2]", border: "border-[#fca5a5]", iconColor: "text-[#FB2C36]" } :
+                      { bg: "bg-[#faf5ff]", border: "border-[#c084fc]", iconColor: "text-[#9810FA]" };
+
+  const riskDescColor =
+    currentUV <= 2  ? "text-[#16a34a]" : currentUV <= 5 ? "text-[#ca8a04]" :
+    currentUV <= 7  ? "text-[#ea580c]" : currentUV <= 10 ? "text-[#dc2626]" : "text-[#7c3aed]";
+
   const CustomTooltip = ({ active, payload, label }: any) => {
     if (!active || !payload?.length) return null;
-    const uv    = payload[0].value;
-    const risk  = uv <= 2 ? "Low" : uv <= 5 ? "Moderate" : uv <= 7 ? "High" : uv <= 10 ? "Very High" : "Extreme";
+    const uv = payload[0].value;
     const color = uv <= 2 ? "#00C950" : uv <= 5 ? "#F0B100" : uv <= 7 ? "#FF6900" : uv <= 10 ? "#FB2C36" : "#9810FA";
+    const risk  = uv <= 2 ? "Low" : uv <= 5 ? "Moderate" : uv <= 7 ? "High" : uv <= 10 ? "Very High" : "Extreme";
     return (
       <div className="bg-white border border-gray-200 rounded-xl shadow-md px-4 py-3 text-[13px]">
         <p className="text-[#6B7280] mb-1">{label}</p>
@@ -221,41 +278,40 @@ export default function DashboardPage() {
     );
   };
 
-  const recCardStyle =
-    currentUV <= 2  ? { bg: "bg-[#f0fdf4]", border: "border-[#bbf7d0]", iconColor: "text-[#00C950]" } :
-    currentUV <= 5  ? { bg: "bg-[#fefce8]", border: "border-[#fde68a]", iconColor: "text-[#F0B100]" } :
-    currentUV <= 7  ? { bg: "bg-[#fff7ed]", border: "border-[#ff6900]", iconColor: "text-[#FF6900]" } :
-    currentUV <= 10 ? { bg: "bg-[#fff1f2]", border: "border-[#fca5a5]", iconColor: "text-[#FB2C36]" } :
-                      { bg: "bg-[#faf5ff]", border: "border-[#c084fc]", iconColor: "text-[#9810FA]" };
-
-  const riskDescColor =
-    currentUV <= 2  ? "text-[#16a34a]" :
-    currentUV <= 5  ? "text-[#ca8a04]" :
-    currentUV <= 7  ? "text-[#ea580c]" :
-    currentUV <= 10 ? "text-[#dc2626]" :
-                      "text-[#7c3aed]";
-
   return (
     <div className="flex flex-col gap-6">
 
-      {/* Alerts */}
+      {/* ── Alerts ── */}
       {currentUV >= 6 && !uvLoading && (
         <div className="bg-[#fff7ed] border border-[#ff6900] rounded-xl px-5 py-4 flex items-start gap-3">
           <AlertTriangle size={18} className="text-[#0a0a0a] mt-0.5 shrink-0" />
           <div>
             <p className="text-[#7e2a0c] text-[14px] font-medium">High UV Alert</p>
-            <p className="text-[#9f2d00] text-[14px]">UV levels are currently high ({currentUV}) in {locationName}. Apply SPF 50+ and seek shade during peak hours.</p>
+            <p className="text-[#9f2d00] text-[14px]">UV is currently {currentUV} in {locationName}. Apply SPF 50+ and seek shade during peak hours.</p>
           </div>
         </div>
       )}
       {currentUV >= 3 && currentUV <= 5 && !uvLoading && (
         <div className="bg-[#fefce8] border border-[#fde68a] rounded-xl px-5 py-3 flex items-center gap-3">
           <Sun size={16} className="text-[#F0B100] shrink-0" />
-          <p className="text-[#713f12] text-[13px]">UV is {currentUV} — sunscreen is required from UV 3 and above. Apply <strong>SPF 50+</strong> before heading out.</p>
+          <p className="text-[#713f12] text-[13px]">UV is {currentUV} \u2014 sunscreen is required from UV 3 and above. Apply <strong>SPF 50+</strong> before heading out.</p>
         </div>
       )}
 
-      {/* Top stat cards */}
+      {/* ── Did You Know fact strip ── */}
+      <div className="bg-gradient-to-r from-[#fff7ed] to-[#fefce8] border border-[#fde68a] rounded-xl px-4 py-3 flex items-start gap-3">
+        <Lightbulb size={16} className="text-[#F0B100] shrink-0 mt-0.5" />
+        <div className="flex-1 min-w-0">
+          <span className="text-[11px] font-bold text-[#b45309] uppercase tracking-wide">Did you know?</span>
+          <p className="text-[#713f12] text-[13px] mt-0.5 leading-snug">{UV_FACTS[factIndex]}</p>
+        </div>
+        <button
+          onClick={() => setFactIndex(i => (i + 1) % UV_FACTS.length)}
+          className="text-[11px] text-[#b45309] hover:text-[#FF6900] font-medium shrink-0 cursor-pointer underline-offset-2 hover:underline"
+        >Next ›</button>
+      </div>
+
+      {/* ── Top stat cards ── */}
       <div className="grid grid-cols-1 lg:grid-cols-[2fr_1fr_1fr] gap-6">
 
         {/* Current UV card */}
@@ -279,10 +335,7 @@ export default function DashboardPage() {
           <form onSubmit={handleSearchLocation} className="flex items-center gap-2 mb-3">
             <div className="relative flex-1">
               <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-              <input
-                ref={searchInputRef}
-                type="text"
-                value={searchQuery}
+              <input ref={searchInputRef} type="text" value={searchQuery}
                 onChange={(e) => { setSearchQuery(e.target.value); setSearchError(null); }}
                 placeholder="Search city or suburb..."
                 className="w-full pl-8 pr-8 py-2 text-[13px] border border-black/10 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#FF6900]/30 focus:border-[#FF6900] bg-gray-50 text-[#101828] placeholder-gray-400"
@@ -294,39 +347,27 @@ export default function DashboardPage() {
                 </button>
               )}
             </div>
-            <button
-              type="submit"
-              disabled={searching || !searchQuery.trim()}
-              className="flex items-center gap-1.5 px-3 py-2 bg-[#FF6900] hover:bg-[#E55E00] disabled:opacity-50 text-white text-[13px] font-medium rounded-lg transition-colors cursor-pointer shrink-0"
-            >
+            <button type="submit" disabled={searching || !searchQuery.trim()}
+              className="flex items-center gap-1.5 px-3 py-2 bg-[#FF6900] hover:bg-[#E55E00] disabled:opacity-50 text-white text-[13px] font-medium rounded-lg transition-colors cursor-pointer shrink-0">
               {searching ? <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <Search size={13} />}
               {searching ? "Searching..." : "Search"}
             </button>
-            <button
-              type="button"
-              onClick={handleUseMyLocation}
-              disabled={locating}
-              title="Use my GPS location"
-              className="flex items-center gap-1 px-3 py-2 border border-black/10 rounded-lg text-[13px] text-[#4a5565] hover:text-[#FF6900] hover:border-[#FF6900] hover:bg-orange-50 transition-colors disabled:opacity-60 cursor-pointer shrink-0"
-            >
+            <button type="button" onClick={handleUseMyLocation} disabled={locating} title="Use my GPS location"
+              className="flex items-center gap-1 px-3 py-2 border border-black/10 rounded-lg text-[13px] text-[#4a5565] hover:text-[#FF6900] hover:border-[#FF6900] hover:bg-orange-50 transition-colors disabled:opacity-60 cursor-pointer shrink-0">
               <LocateFixed size={13} className={locating ? "animate-pulse text-[#FF6900]" : ""} />
               {locating ? "Locating..." : "GPS"}
             </button>
           </form>
 
           {(locError || searchError) && (
-            <p className="mb-2 text-[12px] text-red-500 flex items-center gap-1">
-              <AlertTriangle size={12} /> {locError || searchError}
-            </p>
+            <p className="mb-2 text-[12px] text-red-500 flex items-center gap-1"><AlertTriangle size={12} />{locError || searchError}</p>
           )}
 
           {uvLoading || locating || searching ? (
             <div className="flex items-center justify-center h-[100px]">
               <div className="flex flex-col items-center gap-2">
                 <div className="w-7 h-7 border-2 border-[#FF6900] border-t-transparent rounded-full animate-spin" />
-                <p className="text-[#717182] text-[12px]">
-                  {locating ? "Getting your location..." : searching ? "Searching location..." : "Fetching live UV data..."}
-                </p>
+                <p className="text-[#717182] text-[12px]">{locating ? "Getting your location..." : searching ? "Searching location..." : "Fetching live UV data..."}</p>
               </div>
             </div>
           ) : (
@@ -344,15 +385,13 @@ export default function DashboardPage() {
                   <MapPin size={12} className="text-[#F54900] shrink-0" />
                   <span className="text-[#4a5565] text-[13px] font-medium">{locationName}</span>
                   {fetchedAt && (
-                    <span className="text-[11px] text-[#9ca3af] ml-1 flex items-center gap-1">
-                      <Clock size={11} /> {formatFetchTime(fetchedAt)}
-                    </span>
+                    <span className="text-[11px] text-[#9ca3af] ml-1 flex items-center gap-1"><Clock size={11} />{formatFetchTime(fetchedAt)}</span>
                   )}
                 </div>
                 <p className="text-[#4a5565] text-[13px] mt-2">
-                  {currentUV <= 2 ? "UV is low — no sun protection needed right now."
+                  {currentUV <= 2 ? "UV is low \u2014 no sun protection needed right now."
                     : currentUV <= 5 ? "Sunscreen required. Apply SPF 50+ before going outside."
-                    : "High UV — SPF 50+ essential. Seek shade during peak hours."}
+                    : "High UV \u2014 SPF 50+ essential. Seek shade during peak hours."}
                 </p>
               </div>
               <div className="flex flex-col gap-1.5 shrink-0">
@@ -407,11 +446,9 @@ export default function DashboardPage() {
                 <p className="text-[#101828] text-[24px] font-extrabold leading-tight">{peakHours}</p>
                 <p className="text-[#4a5565] text-[13px] mt-2 leading-snug">{getPeakHoursDescription(peakHours)}</p>
                 <div className="mt-4">
-                  {peakHours === "No peak hours today" ? (
-                    <span className="text-[11px] font-semibold px-2.5 py-1 rounded-full border bg-green-50 text-green-700 border-green-200">✓ Safe all day</span>
-                  ) : (
-                    <span className="text-[11px] font-semibold px-2.5 py-1 rounded-full border bg-orange-50 text-orange-700 border-orange-200">⚠️ Seek shade &amp; reapply SPF</span>
-                  )}
+                  {peakHours === "No peak hours today"
+                    ? <span className="text-[11px] font-semibold px-2.5 py-1 rounded-full border bg-green-50 text-green-700 border-green-200">\u2713 Safe all day</span>
+                    : <span className="text-[11px] font-semibold px-2.5 py-1 rounded-full border bg-orange-50 text-orange-700 border-orange-200">\u26a0\ufe0f Seek shade & reapply SPF</span>}
                 </div>
               </>
             )}
@@ -419,7 +456,7 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* 12-Hour Forecast */}
+      {/* ── 12-Hour Forecast ── */}
       <div className="bg-white rounded-2xl border border-black/10 p-6">
         <div className="flex items-center justify-between mb-1">
           <div className="flex items-center gap-2">
@@ -428,30 +465,29 @@ export default function DashboardPage() {
           </div>
           {!uvLoading && locationName && (
             <div className="flex items-center gap-1.5 text-[12px] text-[#6B7280]">
-              <MapPin size={12} className="text-[#F54900]" />
-              <span>{locationName}</span>
+              <MapPin size={12} className="text-[#F54900]" /><span>{locationName}</span>
             </div>
           )}
         </div>
-        <p className="text-[#717182] text-[13px] mb-4">Plan your outdoor activities safely — SPF 50+ required when UV reaches 3</p>
+        <p className="text-[#717182] text-[13px] mb-4">Plan your outdoor activities safely \u2014 SPF 50+ required when UV reaches 3</p>
         {uvLoading ? (
-          <div className="h-[260px] flex items-center justify-center">
+          <div className="h-[240px] flex items-center justify-center">
             <div className="flex flex-col items-center gap-2">
               <div className="w-7 h-7 border-2 border-[#FF6900] border-t-transparent rounded-full animate-spin" />
               <p className="text-[#717182] text-[12px]">Loading forecast...</p>
             </div>
           </div>
         ) : hourlyForecast.length === 0 ? (
-          <div className="h-[260px] flex items-center justify-center">
+          <div className="h-[240px] flex items-center justify-center">
             <p className="text-[#717182] text-[13px]">No forecast data available.</p>
           </div>
         ) : (
-          <div className="h-[260px] w-full">
+          <div className="h-[240px] w-full">
             <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
               <AreaChart data={hourlyForecast}>
                 <defs>
                   <linearGradient id="uvGradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%"  stopColor={forecastColor} stopOpacity={0.75} />
+                    <stop offset="5%" stopColor={forecastColor} stopOpacity={0.75} />
                     <stop offset="95%" stopColor={forecastColor} stopOpacity={0.05} />
                   </linearGradient>
                 </defs>
@@ -474,8 +510,190 @@ export default function DashboardPage() {
         )}
       </div>
 
-      {/* Map + Recommendation side by side */}
+      {/* ── Burn Time Estimator + Health Effects ── */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+        {/* Burn Time Estimator */}
+        <div className="bg-white rounded-2xl border border-black/10 p-5 flex flex-col gap-4">
+          <div>
+            <div className="flex items-center gap-2 mb-0.5">
+              <Activity size={16} className="text-[#FF6900]" />
+              <h3 className="text-[#0a0a0a] text-[15px] font-semibold">Burn Time Estimator</h3>
+            </div>
+            <p className="text-[#717182] text-[12px]">Estimated time before UV damage begins for your skin type at UV {currentUV}</p>
+          </div>
+
+          {/* Skin type selector */}
+          <div className="grid grid-cols-3 gap-1.5">
+            {SKIN_TYPES.map(st => (
+              <button key={st.id} onClick={() => setSelectedSkinType(st.id)}
+                className={`rounded-lg px-2 py-2 text-left border transition-all cursor-pointer ${
+                  selectedSkinType === st.id
+                    ? "border-[#FF6900] bg-[#fff7ed]"
+                    : "border-gray-100 bg-gray-50 hover:border-gray-200"
+                }`}>
+                <p className={`text-[11px] font-bold ${selectedSkinType === st.id ? "text-[#FF6900]" : "text-[#101828]"}`}>{st.label}</p>
+                <p className="text-[10px] text-[#6a7282] leading-tight mt-0.5 line-clamp-1">{st.desc}</p>
+              </button>
+            ))}
+          </div>
+
+          {/* Selected skin type detail */}
+          <div className="bg-gray-50 rounded-xl px-4 py-3 border border-black/5">
+            <p className="text-[11px] text-[#6a7282] mb-1"><span className="font-semibold text-[#4a5565]">{selectedSkin.label}:</span> {selectedSkin.example}</p>
+            <p className="text-[11px] text-[#6a7282]">{selectedSkin.desc}</p>
+          </div>
+
+          {/* Burn time result */}
+          <div className="grid grid-cols-2 gap-3">
+            <div className="bg-[#fff1f2] border border-red-100 rounded-xl p-3 text-center">
+              <p className="text-[10px] text-[#9f2d00] font-semibold mb-1">\u26a0\ufe0f Without SPF</p>
+              <p className="text-[22px] font-extrabold text-[#dc2626] leading-none">
+                {uvLoading ? "\u2014" : fmtBurnTime(burnMins)}
+              </p>
+              <p className="text-[10px] text-[#6a7282] mt-1">before damage begins</p>
+            </div>
+            <div className="bg-[#f0fdf4] border border-green-100 rounded-xl p-3 text-center">
+              <p className="text-[10px] text-[#166534] font-semibold mb-1">\u2713 With SPF 50+</p>
+              <p className="text-[22px] font-extrabold text-[#16a34a] leading-none">
+                {uvLoading ? "\u2014" : (burnMins >= 999 ? "No risk" : fmtBurnTime(Math.min(burnMins * 50, 480)))}
+              </p>
+              <p className="text-[10px] text-[#6a7282] mt-1">estimated protection</p>
+            </div>
+          </div>
+          <p className="text-[10px] text-[#9ca3af] leading-snug">
+            Based on simplified WHO/Diffey formula. Actual times vary by skin condition, altitude, reflection & sunscreen coverage. Always reapply every 2 hours regardless.
+          </p>
+        </div>
+
+        {/* UV Health Effects */}
+        <div className="bg-white rounded-2xl border border-black/10 p-5 flex flex-col gap-3">
+          <div>
+            <div className="flex items-center gap-2 mb-0.5">
+              <Info size={16} className="text-[#155dfc]" />
+              <h3 className="text-[#0a0a0a] text-[15px] font-semibold">Health Effects at UV {currentUV}</h3>
+            </div>
+            <p className="text-[#717182] text-[12px]">What UV {currentUV} ({riskLevel}) means for your body right now</p>
+          </div>
+
+          <div className="flex flex-col gap-2">
+            {healthEffects.map(effect => {
+              const iconEl =
+                effect.icon === "skin"   ? <Sun size={14} className="text-[#FF6900]" /> :
+                effect.icon === "eye"    ? <Eye size={14} className="text-[#155dfc]" /> :
+                effect.icon === "dna"    ? <Zap size={14} className="text-[#9810fa]" /> :
+                                           <Shield size={14} className="text-[#16a34a]" />;
+              return (
+                <div key={effect.icon} className="flex items-start gap-3 bg-gray-50 rounded-xl px-3 py-2.5 border border-black/5">
+                  <div className="w-7 h-7 rounded-lg bg-white flex items-center justify-center shrink-0 shadow-sm border border-black/5">{iconEl}</div>
+                  <div>
+                    <p className="text-[12px] font-semibold text-[#101828]">{effect.label}</p>
+                    <p className="text-[11px] text-[#6a7282] leading-snug mt-0.5">{effect.effect}</p>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* UV cumulative damage note */}
+          <div className="bg-[#eff6ff] border border-blue-100 rounded-xl px-3 py-2.5">
+            <p className="text-[11px] text-[#1d4ed8] leading-snug">
+              <span className="font-semibold">Cumulative damage:</span> UV damage builds up over your lifetime and cannot be reversed. Each exposure \u2014 even without sunburn \u2014 increases long-term skin cancer risk. (Skin Cancer Foundation)
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Skin Type Protection Guide ── */}
+      <div className="bg-white rounded-2xl border border-black/10 p-5">
+        <div className="flex items-center gap-2 mb-1">
+          <Shirt size={16} className="text-[#9810fa]" />
+          <h3 className="text-[#0a0a0a] text-[15px] font-semibold">Skin Type Protection Guide</h3>
+        </div>
+        <p className="text-[#717182] text-[12px] mb-4">Unprotected burn times at current UV {currentUV} — all skin types need SPF 50+ when UV \u2265 3 (WHO / Safe Work Australia)</p>
+        <div className="overflow-x-auto">
+          <table className="w-full text-[12px] border-collapse">
+            <thead>
+              <tr className="border-b border-black/5">
+                <th className="text-left py-2 pr-4 text-[#4a5565] font-semibold">Skin Type</th>
+                <th className="text-left py-2 pr-4 text-[#4a5565] font-semibold">Description</th>
+                <th className="text-right py-2 pr-4 text-[#dc2626] font-semibold">Without SPF</th>
+                <th className="text-right py-2 text-[#16a34a] font-semibold">With SPF 50+</th>
+              </tr>
+            </thead>
+            <tbody>
+              {SKIN_TYPES.map((st, i) => {
+                const bm  = burnTimeMinutes(currentUV, st.factor);
+                const spf = bm >= 999 ? "No risk" : fmtBurnTime(Math.min(bm * 50, 480));
+                const isSelected = st.id === selectedSkinType;
+                return (
+                  <tr key={st.id}
+                    onClick={() => setSelectedSkinType(st.id)}
+                    className={`border-b border-black/5 cursor-pointer transition-colors ${
+                      isSelected ? "bg-[#fff7ed]" : i % 2 === 0 ? "bg-white hover:bg-gray-50" : "bg-gray-50/50 hover:bg-gray-50"
+                    }`}>
+                    <td className="py-2 pr-4">
+                      <span className={`font-semibold ${isSelected ? "text-[#FF6900]" : "text-[#101828]"}`}>{st.label}</span>
+                    </td>
+                    <td className="py-2 pr-4 text-[#6a7282]">{st.desc}</td>
+                    <td className="py-2 pr-4 text-right font-semibold text-[#dc2626]">{uvLoading ? "\u2014" : fmtBurnTime(bm)}</td>
+                    <td className="py-2 text-right font-semibold text-[#16a34a]">{uvLoading ? "\u2014" : spf}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+        <p className="text-[10px] text-[#9ca3af] mt-3">SPF 50+ estimate assumes correct application (35 mL full body coverage). Always reapply every 2 hours regardless of SPF rating.</p>
+      </div>
+
+      {/* ── Protection Checklist + Map ── */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+        {/* Protection Checklist */}
+        <div className="bg-white rounded-2xl border border-black/10 p-5 flex flex-col gap-3">
+          <div>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Umbrella size={16} className="text-[#FF6900]" />
+                <h3 className="text-[#0a0a0a] text-[15px] font-semibold">Protection Checklist</h3>
+              </div>
+              <button onClick={() => setShowChecklist(v => !v)}
+                className="text-[#9ca3af] hover:text-[#4a5565] cursor-pointer transition-colors">
+                {showChecklist ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+              </button>
+            </div>
+            <p className="text-[#717182] text-[12px] mt-0.5">
+              {currentUV < 3 ? "No protection needed at UV below 3" : `${activeChecklist.length} measures recommended at UV ${currentUV}`}
+            </p>
+          </div>
+
+          {showChecklist && (
+            <div className="flex flex-col gap-2">
+              {checklist.map((item, i) => (
+                <div key={i} className={`flex items-start gap-3 rounded-xl px-3 py-2.5 border ${
+                  item.done
+                    ? "bg-[#f0fdf4] border-green-100"
+                    : "bg-gray-50 border-black/5 opacity-40"
+                }`}>
+                  <div className={`w-4 h-4 rounded-full shrink-0 mt-0.5 flex items-center justify-center ${
+                    item.done ? "bg-[#16a34a]" : "bg-gray-200"
+                  }`}>
+                    {item.done && <span className="text-white text-[9px] font-bold">\u2713</span>}
+                  </div>
+                  <p className={`text-[12px] leading-snug ${item.done ? "text-[#101828] font-medium" : "text-[#6a7282]"}`}>{item.label}</p>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Australia-specific callout */}
+          <div className="bg-[#fff7ed] border border-[#ffcf99] rounded-xl px-3 py-2.5 mt-auto">
+            <p className="text-[11px] text-[#7e2a0c] leading-snug">
+              <span className="font-semibold">\ud83c\udde6\ud83c\uddfa Australia:</span> 2 in 3 Australians will develop skin cancer by age 70 \u2014 the world\u2019s highest rate. Consistent daily protection is the most effective prevention. (ARPANSA)
+            </p>
+          </div>
+        </div>
 
         {/* Interactive Map */}
         <div className="bg-white rounded-2xl border border-black/10 p-5 flex flex-col">
@@ -484,54 +702,55 @@ export default function DashboardPage() {
             <h3 className="text-[#0a0a0a] text-[15px] font-medium">Interactive UV Map</h3>
           </div>
           <p className="text-[#717182] text-[12px] mb-3">Tap any location to get local UV details</p>
-          <div className="flex-1 min-h-[320px]">
-            <UVMap
-              currentUv={currentUV}
-              onLocationSelect={(payload) => setUVDataOverrides(payload)}
-              initialLocation={savedLocation}
-            />
+          <div className="flex-1 min-h-[300px]">
+            <UVMap currentUv={currentUV} onLocationSelect={(payload) => setUVDataOverrides(payload)} initialLocation={savedLocation} />
           </div>
         </div>
+      </div>
 
-        {/* Sunscreen Recommendation */}
-        <div className="bg-white rounded-2xl border border-black/10 p-5 flex flex-col">
-          <div className="flex items-start justify-between mb-1">
-            <div>
-              <h3 className="text-[#0a0a0a] text-[15px] font-medium">Sunscreen Recommendation</h3>
-              <p className="text-[#717182] text-[12px] mt-0.5">Based on current UV — SPF 50+ required at UV 3+</p>
-            </div>
-            {recSource === "fallback" && (
-              <span className="text-[10px] text-[#6a7282] bg-gray-100 px-2 py-0.5 rounded-lg border border-black/5 shrink-0">Built-in</span>
-            )}
+      {/* ── Sunscreen Recommendation ── */}
+      <div className="bg-white rounded-2xl border border-black/10 p-5">
+        <div className="flex items-start justify-between mb-1">
+          <div>
+            <h3 className="text-[#0a0a0a] text-[15px] font-semibold">Sunscreen Recommendation</h3>
+            <p className="text-[#717182] text-[12px] mt-0.5">Based on current UV \u2014 SPF 50+ required at UV 3+ (WHO / Cancer Council AU)</p>
           </div>
-          <div className={`mt-3 ${recCardStyle.bg} border ${recCardStyle.border} rounded-xl px-4 py-3 flex items-start gap-3 flex-1`}>
-            <Sun size={18} className={`${recCardStyle.iconColor} mt-0.5 shrink-0`} />
-            <div className="flex-1">
-              <p className="text-[#101828] text-[13px] font-semibold">
-                {sunscreenRec
-                  ? currentUV <= 2 ? "No sunscreen required at UV 0–2."
-                    : `${sunscreenRec.spfLevel} required — UV is ${currentUV} (${riskLevel}).`
-                  : "Loading recommendation..."}
-              </p>
-              <p className="text-[#4a5565] text-[13px] mt-1 leading-snug">
-                {sunscreenRec ? sunscreenRec.advice : "Calculating advice..."}
-              </p>
-              {sunscreenRec && currentUV >= 3 && (
-                <ul className="mt-3 flex flex-col gap-1.5">
-                  {[
-                    "Apply SPF 50+ 20 minutes before going outside",
-                    "Reapply every 2 hours, or after swimming or sweating",
-                    "Wear a broad-brimmed hat and UV-protective sunglasses",
-                    currentUV >= 6 ? "Seek shade between 10 am and 3 pm" : null,
-                    currentUV >= 8 ? "Wear long sleeves and sun-protective clothing" : null,
-                  ].filter(Boolean).map(tip => (
-                    <li key={tip} className="flex items-start gap-2 text-[12px] text-[#4a5565]">
-                      <span className="text-[#FF6900] mt-0.5">✓</span>{tip}
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
+          {recSource === "fallback" && (
+            <span className="text-[10px] text-[#6a7282] bg-gray-100 px-2 py-0.5 rounded-lg border border-black/5 shrink-0">Built-in</span>
+          )}
+        </div>
+        <div className={`mt-3 ${recCardStyle.bg} border ${recCardStyle.border} rounded-xl px-4 py-3 flex items-start gap-3`}>
+          <Sun size={18} className={`${recCardStyle.iconColor} mt-0.5 shrink-0`} />
+          <div className="flex-1">
+            <p className="text-[#101828] text-[13px] font-semibold">
+              {sunscreenRec
+                ? currentUV <= 2 ? "No sunscreen required at UV 0\u20132."
+                  : `${sunscreenRec.spfLevel} required \u2014 UV is ${currentUV} (${riskLevel}).`
+                : "Loading recommendation..."}
+            </p>
+            <p className="text-[#4a5565] text-[13px] mt-1 leading-snug">
+              {sunscreenRec ? sunscreenRec.advice : "Calculating advice..."}
+            </p>
+            {sunscreenRec && currentUV >= 3 && (
+              <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1.5">
+                {[
+                  "Apply SPF 50+ 20 minutes before going outside",
+                  "Use 1 tsp per body area (35 mL total for full body)",
+                  "Reapply every 2 hours \u2014 even on cloudy days",
+                  "Reapply immediately after swimming or heavy sweating",
+                  "Use broad-spectrum (UVA + UVB) SPF 50+",
+                  "Protect lips with SPF 30+ lip balm",
+                  currentUV >= 6 ? "Seek shade between 10 am and 3 pm" : null,
+                  currentUV >= 6 ? "Wear a broad-brimmed hat (brim \u2265 7.5 cm)" : null,
+                  currentUV >= 8 ? "Wear long sleeves and sun-protective clothing" : null,
+                  currentUV >= 8 ? "Minimise outdoor time during peak hours" : null,
+                ].filter(Boolean).map(tip => (
+                  <div key={tip} className="flex items-start gap-2 text-[12px] text-[#4a5565]">
+                    <span className="text-[#FF6900] mt-0.5 shrink-0">\u2713</span>{tip}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       </div>

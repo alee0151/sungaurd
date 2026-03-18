@@ -1,6 +1,6 @@
 import { Outlet, NavLink, useNavigate, Link } from "react-router";
 import { Sun, BookOpen, User, Bell, LogOut, Home } from "lucide-react";
-import { createContext, useContext, useState, useEffect } from "react";
+import { createContext, useContext, useState, useEffect, useCallback } from "react";
 import {
   readUVCache,
   writeUVCache,
@@ -130,6 +130,23 @@ async function geocodeLocation(
   }
 }
 
+/** Persist the new location string to the backend + localStorage so it
+ *  survives a page refresh / re-login. Fire-and-forget — UI doesn't block. */
+async function persistLocationToBackend(locationName: string) {
+  try {
+    const token = localStorage.getItem("sunguard_token");
+    if (!token) return;
+    localStorage.setItem("sunguard_location", locationName);
+    await fetch(`${backendUrl}/users/me`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ location: locationName }),
+    });
+  } catch {
+    // non-critical — ignore network errors
+  }
+}
+
 export default function Layout() {
   const navigate = useNavigate();
   const [skinType, setSkinType]       = useState(3);
@@ -144,13 +161,19 @@ export default function Layout() {
   const [uvFromCache, setUvFromCache]         = useState(false);
   const [uvCacheAge, setUvCacheAge]           = useState(0);
 
-  const setUVDataOverrides = (payload: LocationUVPayload) => {
+  /**
+   * Called by DashboardPage / UVMap whenever the user picks a new location.
+   * Also persists the change to the backend so the next login reflects it.
+   */
+  const setUVDataOverrides = useCallback((payload: LocationUVPayload) => {
     setCurrentUV(payload.uv);
     setCurrentLocation(payload.locationName);
     setHourlyForecast(payload.hourlyForecast);
     setUvFromCache(payload.fromCache);
     setUvCacheAge(payload.cacheAgeMinutes);
-  };
+    // Persist so ProfilePage, RemindersPage etc. all see the same data
+    persistLocationToBackend(payload.locationName);
+  }, []);
 
   useEffect(() => {
     purgeExpiredUVCache();
@@ -211,7 +234,6 @@ export default function Layout() {
       }
 
       setAuthChecked(true);
-
       if (!authOk) return;
 
       if (savedLocation) {

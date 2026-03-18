@@ -42,7 +42,7 @@ function getRiskDescription(uv: number): string {
 }
 function getPeakHoursDescription(peakHours: string): string {
   if (peakHours === "No peak hours today") return "UV stays low all day — no high-risk window today.";
-  return "UV ≥ 6 during this window — stay in the shade and reapply SPF.";
+  return "UV \u2265 6 during this window — stay in the shade and reapply SPF.";
 }
 
 type SunscreenRecommendation = { riskLevel: string; spfLevel: string; advice: string };
@@ -55,25 +55,6 @@ function getFallbackRecommendation(uv: number): SunscreenRecommendation {
 }
 function formatFetchTime(date: Date): string {
   return date.toLocaleTimeString("en-AU", { hour: "2-digit", minute: "2-digit", hour12: true });
-}
-
-// ─── Burn time estimator data (based on WHO / SWA guidelines) ────────────────
-const SKIN_TYPES = [
-  { id: 1, label: "Type I",   desc: "Always burns, never tans",           factor: 1.0,  example: "Very fair, freckles, red/blonde hair" },
-  { id: 2, label: "Type II",  desc: "Usually burns, tans minimally",      factor: 1.5,  example: "Fair skin, blue/hazel eyes" },
-  { id: 3, label: "Type III", desc: "Sometimes burns, tans gradually",    factor: 2.5,  example: "Medium skin, brown hair/eyes" },
-  { id: 4, label: "Type IV",  desc: "Rarely burns, tans easily",          factor: 4.0,  example: "Olive/light brown skin" },
-  { id: 5, label: "Type V",   desc: "Very rarely burns, tans very easily", factor: 8.0,  example: "Brown/dark brown skin" },
-  { id: 6, label: "Type VI",  desc: "Never burns",                         factor: 15.0, example: "Deeply pigmented dark skin" },
-];
-function burnTimeMinutes(uv: number, skinFactor: number): number {
-  if (uv <= 0) return 999;
-  return Math.round((200 * skinFactor) / uv);
-}
-function fmtBurnTime(mins: number): string {
-  if (mins >= 999) return "No risk";
-  if (mins >= 60) return `${Math.floor(mins / 60)}h ${mins % 60}m`;
-  return `${mins} min`;
 }
 
 // ─── UV health effects per level ─────────────────────────────────────────────
@@ -165,9 +146,8 @@ export default function DashboardPage() {
   const [searchError, setSearchError]   = useState<string | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
-  const [selectedSkinType, setSelectedSkinType] = useState(2);
-  const [showChecklist, setShowChecklist]        = useState(true);
-  const [factIndex, setFactIndex]                = useState(() => Math.floor(Math.random() * UV_FACTS.length));
+  const [showChecklist, setShowChecklist] = useState(true);
+  const [factIndex, setFactIndex]         = useState(() => Math.floor(Math.random() * UV_FACTS.length));
 
   useEffect(() => { if (!uvLoading) setFetchedAt(new Date()); }, [uvLoading, currentUV]);
 
@@ -237,8 +217,6 @@ export default function DashboardPage() {
   const yAxisMax      = Math.max(4, Math.ceil(maxForecastUV * 1.2));
   const forecastColor = getForecastGradientColor(maxForecastUV);
 
-  const selectedSkin    = SKIN_TYPES[selectedSkinType - 1];
-  const burnMins        = burnTimeMinutes(currentUV, selectedSkin.factor);
   const healthEffects   = getHealthEffects(currentUV);
   const checklist       = getProtectionChecklist(currentUV);
   const activeChecklist = checklist.filter(c => c.done);
@@ -501,137 +479,38 @@ export default function DashboardPage() {
         )}
       </div>
 
-      {/* Burn Time Estimator + Health Effects */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-
-        {/* Burn Time Estimator */}
-        <div className="bg-white rounded-2xl border border-black/10 p-5 flex flex-col gap-4">
-          <div>
-            <div className="flex items-center gap-2 mb-0.5">
-              <Activity size={16} className="text-[#FF6900]" />
-              <h3 className="text-[#0a0a0a] text-[15px] font-semibold">Burn Time Estimator</h3>
-            </div>
-            <p className="text-[#717182] text-[12px]">Estimated time before UV damage begins for your skin type at UV {currentUV}</p>
+      {/* UV Health Effects (full width now burn time estimator removed) */}
+      <div className="bg-white rounded-2xl border border-black/10 p-5 flex flex-col gap-3">
+        <div>
+          <div className="flex items-center gap-2 mb-0.5">
+            <Info size={16} className="text-[#155dfc]" />
+            <h3 className="text-[#0a0a0a] text-[15px] font-semibold">Health Effects at UV {currentUV}</h3>
           </div>
-
-          <div className="grid grid-cols-3 gap-1.5">
-            {SKIN_TYPES.map(st => (
-              <button key={st.id} onClick={() => setSelectedSkinType(st.id)}
-                className={`rounded-lg px-2 py-2 text-left border transition-all cursor-pointer ${
-                  selectedSkinType === st.id
-                    ? "border-[#FF6900] bg-[#fff7ed]"
-                    : "border-gray-100 bg-gray-50 hover:border-gray-200"
-                }`}>
-                <p className={`text-[11px] font-bold ${selectedSkinType === st.id ? "text-[#FF6900]" : "text-[#101828]"}`}>{st.label}</p>
-                <p className="text-[10px] text-[#6a7282] leading-tight mt-0.5 line-clamp-1">{st.desc}</p>
-              </button>
-            ))}
-          </div>
-
-          <div className="bg-gray-50 rounded-xl px-4 py-3 border border-black/5">
-            <p className="text-[11px] text-[#6a7282] mb-1"><span className="font-semibold text-[#4a5565]">{selectedSkin.label}:</span> {selectedSkin.example}</p>
-            <p className="text-[11px] text-[#6a7282]">{selectedSkin.desc}</p>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div className="bg-[#fff1f2] border border-red-100 rounded-xl p-3 text-center">
-              <p className="text-[10px] text-[#9f2d00] font-semibold mb-1">&#9888; Without SPF</p>
-              <p className="text-[22px] font-extrabold text-[#dc2626] leading-none">
-                {uvLoading ? "—" : fmtBurnTime(burnMins)}
-              </p>
-              <p className="text-[10px] text-[#6a7282] mt-1">before damage begins</p>
-            </div>
-            <div className="bg-[#f0fdf4] border border-green-100 rounded-xl p-3 text-center">
-              <p className="text-[10px] text-[#166534] font-semibold mb-1">&#10003; With SPF 50+</p>
-              <p className="text-[22px] font-extrabold text-[#16a34a] leading-none">
-                {uvLoading ? "—" : (burnMins >= 999 ? "No risk" : fmtBurnTime(Math.min(burnMins * 50, 480)))}
-              </p>
-              <p className="text-[10px] text-[#6a7282] mt-1">estimated protection</p>
-            </div>
-          </div>
-          <p className="text-[10px] text-[#9ca3af] leading-snug">
-            Based on simplified WHO/Diffey formula. Actual times vary by skin condition, altitude, reflection &amp; sunscreen coverage. Always reapply every 2 hours regardless.
+          <p className="text-[#717182] text-[12px]">What UV {currentUV} ({riskLevel}) means for your body right now</p>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          {healthEffects.map(effect => {
+            const iconEl =
+              effect.icon === "skin"   ? <Sun size={14} className="text-[#FF6900]" /> :
+              effect.icon === "eye"    ? <Eye size={14} className="text-[#155dfc]" /> :
+              effect.icon === "dna"    ? <Zap size={14} className="text-[#9810fa]" /> :
+                                         <Shield size={14} className="text-[#16a34a]" />;
+            return (
+              <div key={effect.icon} className="flex items-start gap-3 bg-gray-50 rounded-xl px-3 py-2.5 border border-black/5">
+                <div className="w-7 h-7 rounded-lg bg-white flex items-center justify-center shrink-0 shadow-sm border border-black/5">{iconEl}</div>
+                <div>
+                  <p className="text-[12px] font-semibold text-[#101828]">{effect.label}</p>
+                  <p className="text-[11px] text-[#6a7282] leading-snug mt-0.5">{effect.effect}</p>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        <div className="bg-[#eff6ff] border border-blue-100 rounded-xl px-3 py-2.5">
+          <p className="text-[11px] text-[#1d4ed8] leading-snug">
+            <span className="font-semibold">Cumulative damage:</span> UV damage builds up over your lifetime and cannot be reversed. Each exposure — even without sunburn — increases long-term skin cancer risk. (Skin Cancer Foundation)
           </p>
         </div>
-
-        {/* UV Health Effects */}
-        <div className="bg-white rounded-2xl border border-black/10 p-5 flex flex-col gap-3">
-          <div>
-            <div className="flex items-center gap-2 mb-0.5">
-              <Info size={16} className="text-[#155dfc]" />
-              <h3 className="text-[#0a0a0a] text-[15px] font-semibold">Health Effects at UV {currentUV}</h3>
-            </div>
-            <p className="text-[#717182] text-[12px]">What UV {currentUV} ({riskLevel}) means for your body right now</p>
-          </div>
-
-          <div className="flex flex-col gap-2">
-            {healthEffects.map(effect => {
-              const iconEl =
-                effect.icon === "skin"   ? <Sun size={14} className="text-[#FF6900]" /> :
-                effect.icon === "eye"    ? <Eye size={14} className="text-[#155dfc]" /> :
-                effect.icon === "dna"    ? <Zap size={14} className="text-[#9810fa]" /> :
-                                           <Shield size={14} className="text-[#16a34a]" />;
-              return (
-                <div key={effect.icon} className="flex items-start gap-3 bg-gray-50 rounded-xl px-3 py-2.5 border border-black/5">
-                  <div className="w-7 h-7 rounded-lg bg-white flex items-center justify-center shrink-0 shadow-sm border border-black/5">{iconEl}</div>
-                  <div>
-                    <p className="text-[12px] font-semibold text-[#101828]">{effect.label}</p>
-                    <p className="text-[11px] text-[#6a7282] leading-snug mt-0.5">{effect.effect}</p>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-          <div className="bg-[#eff6ff] border border-blue-100 rounded-xl px-3 py-2.5">
-            <p className="text-[11px] text-[#1d4ed8] leading-snug">
-              <span className="font-semibold">Cumulative damage:</span> UV damage builds up over your lifetime and cannot be reversed. Each exposure — even without sunburn — increases long-term skin cancer risk. (Skin Cancer Foundation)
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {/* Skin Type Protection Guide */}
-      <div className="bg-white rounded-2xl border border-black/10 p-5">
-        <div className="flex items-center gap-2 mb-1">
-          <Shirt size={16} className="text-[#9810fa]" />
-          <h3 className="text-[#0a0a0a] text-[15px] font-semibold">Skin Type Protection Guide</h3>
-        </div>
-        <p className="text-[#717182] text-[12px] mb-4">Unprotected burn times at current UV {currentUV} — all skin types need SPF 50+ when UV &ge; 3 (WHO / Safe Work Australia)</p>
-        <div className="overflow-x-auto">
-          <table className="w-full text-[12px] border-collapse">
-            <thead>
-              <tr className="border-b border-black/5">
-                <th className="text-left py-2 pr-4 text-[#4a5565] font-semibold">Skin Type</th>
-                <th className="text-left py-2 pr-4 text-[#4a5565] font-semibold">Description</th>
-                <th className="text-right py-2 pr-4 text-[#dc2626] font-semibold">Without SPF</th>
-                <th className="text-right py-2 text-[#16a34a] font-semibold">With SPF 50+</th>
-              </tr>
-            </thead>
-            <tbody>
-              {SKIN_TYPES.map((st, i) => {
-                const bm  = burnTimeMinutes(currentUV, st.factor);
-                const spf = bm >= 999 ? "No risk" : fmtBurnTime(Math.min(bm * 50, 480));
-                const isSelected = st.id === selectedSkinType;
-                return (
-                  <tr key={st.id}
-                    onClick={() => setSelectedSkinType(st.id)}
-                    className={`border-b border-black/5 cursor-pointer transition-colors ${
-                      isSelected ? "bg-[#fff7ed]" : i % 2 === 0 ? "bg-white hover:bg-gray-50" : "bg-gray-50/50 hover:bg-gray-50"
-                    }`}>
-                    <td className="py-2 pr-4">
-                      <span className={`font-semibold ${isSelected ? "text-[#FF6900]" : "text-[#101828]"}`}>{st.label}</span>
-                    </td>
-                    <td className="py-2 pr-4 text-[#6a7282]">{st.desc}</td>
-                    <td className="py-2 pr-4 text-right font-semibold text-[#dc2626]">{uvLoading ? "—" : fmtBurnTime(bm)}</td>
-                    <td className="py-2 text-right font-semibold text-[#16a34a]">{uvLoading ? "—" : spf}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-        <p className="text-[10px] text-[#9ca3af] mt-3">SPF 50+ estimate assumes correct application (35 mL full body coverage). Always reapply every 2 hours regardless of SPF rating.</p>
       </div>
 
       {/* Protection Checklist + Map */}
@@ -654,7 +533,6 @@ export default function DashboardPage() {
               {currentUV < 3 ? "No protection needed at UV below 3" : `${activeChecklist.length} measures recommended at UV ${currentUV}`}
             </p>
           </div>
-
           {showChecklist && (
             <div className="flex flex-col gap-2">
               {checklist.map((item, i) => (
@@ -671,7 +549,6 @@ export default function DashboardPage() {
               ))}
             </div>
           )}
-
           <div className="bg-[#fff7ed] border border-[#ffcf99] rounded-xl px-3 py-2.5 mt-auto">
             <p className="text-[11px] text-[#7e2a0c] leading-snug">
               <span className="font-semibold">&#127462;&#127482; Australia:</span> 2 in 3 Australians will develop skin cancer by age 70 — the world&apos;s highest rate. Consistent daily protection is the most effective prevention. (ARPANSA)

@@ -479,39 +479,93 @@ export default function DashboardPage() {
         )}
       </div>
 
-      {/* UV Health Effects (full width now burn time estimator removed) */}
-      <div className="bg-white rounded-2xl border border-black/10 p-5 flex flex-col gap-3">
-        <div>
-          <div className="flex items-center gap-2 mb-0.5">
-            <Info size={16} className="text-[#155dfc]" />
-            <h3 className="text-[#0a0a0a] text-[15px] font-semibold">Health Effects at UV {currentUV}</h3>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+        {/* Sunscreen Recommendation */}
+        <div className="bg-white rounded-2xl border border-black/10 p-5">
+          <div className="flex items-start justify-between mb-1">
+            <div>
+              <h3 className="text-[#0a0a0a] text-[15px] font-semibold">Sunscreen Recommendation</h3>
+              <p className="text-[#717182] text-[12px] mt-0.5">Based on current UV — SPF 50+ required at UV 3+ (WHO / Cancer Council AU)</p>
+            </div>
+            {recSource === "fallback" && (
+              <span className="text-[10px] text-[#6a7282] bg-gray-100 px-2 py-0.5 rounded-lg border border-black/5 shrink-0">Built-in</span>
+            )}
           </div>
-          <p className="text-[#717182] text-[12px]">What UV {currentUV} ({riskLevel}) means for your body right now</p>
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-          {healthEffects.map(effect => {
-            const iconEl =
-              effect.icon === "skin"   ? <Sun size={14} className="text-[#FF6900]" /> :
-              effect.icon === "eye"    ? <Eye size={14} className="text-[#155dfc]" /> :
-              effect.icon === "dna"    ? <Zap size={14} className="text-[#9810fa]" /> :
-                                         <Shield size={14} className="text-[#16a34a]" />;
-            return (
-              <div key={effect.icon} className="flex items-start gap-3 bg-gray-50 rounded-xl px-3 py-2.5 border border-black/5">
-                <div className="w-7 h-7 rounded-lg bg-white flex items-center justify-center shrink-0 shadow-sm border border-black/5">{iconEl}</div>
-                <div>
-                  <p className="text-[12px] font-semibold text-[#101828]">{effect.label}</p>
-                  <p className="text-[11px] text-[#6a7282] leading-snug mt-0.5">{effect.effect}</p>
+          <div className={`mt-3 ${recCardStyle.bg} border ${recCardStyle.border} rounded-xl px-4 py-3 flex items-start gap-3`}>
+            <Sun size={18} className={`${recCardStyle.iconColor} mt-0.5 shrink-0`} />
+            <div className="flex-1">
+              <p className="text-[#101828] text-[13px] font-semibold">
+                {sunscreenRec
+                  ? currentUV <= 2 ? "No sunscreen required at UV 0-2."
+                    : `${sunscreenRec.spfLevel} required — UV is ${currentUV} (${riskLevel}).`
+                  : "Loading recommendation..."}
+              </p>
+              <p className="text-[#4a5565] text-[13px] mt-1 leading-snug">
+                {sunscreenRec ? sunscreenRec.advice : "Calculating advice..."}
+              </p>
+              {sunscreenRec && currentUV >= 3 && (
+                <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1.5">
+                  {[
+                    "Apply SPF 50+ 20 minutes before going outside",
+                    "Use 1 tsp per body area (35 mL total for full body)",
+                    "Reapply every 2 hours — even on cloudy days",
+                    "Reapply immediately after swimming or heavy sweating",
+                    "Use broad-spectrum (UVA + UVB) SPF 50+",
+                    "Protect lips with SPF 30+ lip balm",
+                    currentUV >= 6 ? "Seek shade between 10 am and 3 pm" : null,
+                    currentUV >= 6 ? "Wear a broad-brimmed hat (brim 7.5 cm+)" : null,
+                    currentUV >= 8 ? "Wear long sleeves and sun-protective clothing" : null,
+                    currentUV >= 8 ? "Minimise outdoor time during peak hours" : null,
+                  ].filter(Boolean).map(tip => (
+                    <div key={tip} className="flex items-start gap-2 text-[12px] text-[#4a5565]">
+                      <span className="text-[#FF6900] mt-0.5 shrink-0">&#10003;</span>{tip}
+                    </div>
+                  ))}
                 </div>
-              </div>
-            );
-          })}
+              )}
+            </div>
+          </div>
         </div>
-        <div className="bg-[#eff6ff] border border-blue-100 rounded-xl px-3 py-2.5">
-          <p className="text-[11px] text-[#1d4ed8] leading-snug">
-            <span className="font-semibold">Cumulative damage:</span> UV damage builds up over your lifetime and cannot be reversed. Each exposure — even without sunburn — increases long-term skin cancer risk. (Skin Cancer Foundation)
-          </p>
+
+        {/* UV Health Effects (full width now burn time estimator removed) */}
+        <div className="bg-white rounded-2xl border border-black/10 p-5 flex flex-col gap-3">
+          <div>
+            <div className="flex items-center gap-2 mb-0.5">
+              <Info size={16} className="text-[#155dfc]" />
+              <h3 className="text-[#0a0a0a] text-[15px] font-semibold">Health Effects at UV {currentUV}</h3>
+            </div>
+            <p className="text-[#717182] text-[12px]">What UV {currentUV} ({riskLevel}) means for your body right now</p>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            {healthEffects.map(effect => {
+              const iconEl =
+                effect.icon === "skin"   ? <Sun size={14} className="text-[#FF6900]" /> :
+                effect.icon === "eye"    ? <Eye size={14} className="text-[#155dfc]" /> :
+                effect.icon === "dna"    ? <Zap size={14} className="text-[#9810fa]" /> :
+                                          <Shield size={14} className="text-[#16a34a]" />;
+              return (
+                <div key={effect.icon} className="flex items-start gap-3 bg-gray-50 rounded-xl px-3 py-2.5 border border-black/5">
+                  <div className="w-7 h-7 rounded-lg bg-white flex items-center justify-center shrink-0 shadow-sm border border-black/5">{iconEl}</div>
+                  <div>
+                    <p className="text-[12px] font-semibold text-[#101828]">{effect.label}</p>
+                    <p className="text-[11px] text-[#6a7282] leading-snug mt-0.5">{effect.effect}</p>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          <div className="bg-[#eff6ff] border border-blue-100 rounded-xl px-3 py-2.5">
+            <p className="text-[11px] text-[#1d4ed8] leading-snug">
+              <span className="font-semibold">Cumulative damage:</span> UV damage builds up over your lifetime and cannot be reversed. Each exposure — even without sunburn — increases long-term skin cancer risk. (Skin Cancer Foundation)
+            </p>
+          </div>
         </div>
+
+
       </div>
+      
+      
 
       {/* Protection Checklist + Map */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -569,52 +623,7 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Sunscreen Recommendation */}
-      <div className="bg-white rounded-2xl border border-black/10 p-5">
-        <div className="flex items-start justify-between mb-1">
-          <div>
-            <h3 className="text-[#0a0a0a] text-[15px] font-semibold">Sunscreen Recommendation</h3>
-            <p className="text-[#717182] text-[12px] mt-0.5">Based on current UV — SPF 50+ required at UV 3+ (WHO / Cancer Council AU)</p>
-          </div>
-          {recSource === "fallback" && (
-            <span className="text-[10px] text-[#6a7282] bg-gray-100 px-2 py-0.5 rounded-lg border border-black/5 shrink-0">Built-in</span>
-          )}
-        </div>
-        <div className={`mt-3 ${recCardStyle.bg} border ${recCardStyle.border} rounded-xl px-4 py-3 flex items-start gap-3`}>
-          <Sun size={18} className={`${recCardStyle.iconColor} mt-0.5 shrink-0`} />
-          <div className="flex-1">
-            <p className="text-[#101828] text-[13px] font-semibold">
-              {sunscreenRec
-                ? currentUV <= 2 ? "No sunscreen required at UV 0-2."
-                  : `${sunscreenRec.spfLevel} required — UV is ${currentUV} (${riskLevel}).`
-                : "Loading recommendation..."}
-            </p>
-            <p className="text-[#4a5565] text-[13px] mt-1 leading-snug">
-              {sunscreenRec ? sunscreenRec.advice : "Calculating advice..."}
-            </p>
-            {sunscreenRec && currentUV >= 3 && (
-              <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1.5">
-                {[
-                  "Apply SPF 50+ 20 minutes before going outside",
-                  "Use 1 tsp per body area (35 mL total for full body)",
-                  "Reapply every 2 hours — even on cloudy days",
-                  "Reapply immediately after swimming or heavy sweating",
-                  "Use broad-spectrum (UVA + UVB) SPF 50+",
-                  "Protect lips with SPF 30+ lip balm",
-                  currentUV >= 6 ? "Seek shade between 10 am and 3 pm" : null,
-                  currentUV >= 6 ? "Wear a broad-brimmed hat (brim 7.5 cm+)" : null,
-                  currentUV >= 8 ? "Wear long sleeves and sun-protective clothing" : null,
-                  currentUV >= 8 ? "Minimise outdoor time during peak hours" : null,
-                ].filter(Boolean).map(tip => (
-                  <div key={tip} className="flex items-start gap-2 text-[12px] text-[#4a5565]">
-                    <span className="text-[#FF6900] mt-0.5 shrink-0">&#10003;</span>{tip}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
+      
 
     </div>
   );

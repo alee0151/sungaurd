@@ -34,40 +34,38 @@ function getForecastGradientColor(maxUV: number): string {
   if (maxUV <= 7) return "#FF6900"; if (maxUV <= 10) return "#FB2C36"; return "#9810FA";
 }
 function getRiskDescription(uv: number): string {
-  if (uv <= 2) return "Safe to be outside \u2014 no protection needed.";
-  if (uv <= 5) return "Some risk \u2014 apply SPF 50+ before heading out.";
-  if (uv <= 7) return "High risk \u2014 sunscreen, hat & shade are essential.";
-  if (uv <= 10) return "Very high risk \u2014 limit time outdoors, cover up.";
-  return "Extreme risk \u2014 avoid the sun where possible.";
+  if (uv <= 2) return "Safe to be outside — no protection needed.";
+  if (uv <= 5) return "Some risk — apply SPF 50+ before heading out.";
+  if (uv <= 7) return "High risk — sunscreen, hat & shade are essential.";
+  if (uv <= 10) return "Very high risk — limit time outdoors, cover up.";
+  return "Extreme risk — avoid the sun where possible.";
 }
 function getPeakHoursDescription(peakHours: string): string {
-  if (peakHours === "No peak hours today") return "UV stays low all day \u2014 no high-risk window today.";
-  return "UV \u2265 6 during this window \u2014 stay in the shade and reapply SPF.";
+  if (peakHours === "No peak hours today") return "UV stays low all day — no high-risk window today.";
+  return "UV ≥ 6 during this window — stay in the shade and reapply SPF.";
 }
 
 type SunscreenRecommendation = { riskLevel: string; spfLevel: string; advice: string };
 function getFallbackRecommendation(uv: number): SunscreenRecommendation {
-  if (uv <= 2)  return { riskLevel: "Low",       spfLevel: "No sunscreen required", advice: "UV index is low \u2014 sun protection is generally not needed. Enjoy time outdoors, though a hat is still a good habit." };
+  if (uv <= 2)  return { riskLevel: "Low",       spfLevel: "No sunscreen required", advice: "UV index is low — sun protection is generally not needed. Enjoy time outdoors, though a hat is still a good habit." };
   if (uv <= 5)  return { riskLevel: "Moderate",  spfLevel: "SPF 50+", advice: "Apply SPF 50+ sunscreen 20 minutes before going outside and reapply every 2 hours. Wear a broad-brimmed hat and UV-protective sunglasses." };
   if (uv <= 7)  return { riskLevel: "High",      spfLevel: "SPF 50+", advice: "SPF 50+ is essential. Apply generously 20 minutes before sun exposure and reapply every 2 hours or after swimming/sweating. Seek shade during peak hours." };
   if (uv <= 10) return { riskLevel: "Very High", spfLevel: "SPF 50+", advice: "Maximum protection required. Apply SPF 50+ liberally, wear long sleeves, a broad-brimmed hat, and UV-wrap sunglasses. Minimise time outdoors between 10 am and 3 pm." };
-  return         { riskLevel: "Extreme",  spfLevel: "SPF 50+", advice: "Extreme UV \u2014 avoid outdoor exposure where possible. If you must go outside, apply SPF 50+ to all exposed skin, wear full-coverage clothing, a broad-brimmed hat, and UV-wrap sunglasses." };
+  return         { riskLevel: "Extreme",  spfLevel: "SPF 50+", advice: "Extreme UV — avoid outdoor exposure where possible. If you must go outside, apply SPF 50+ to all exposed skin, wear full-coverage clothing, a broad-brimmed hat, and UV-wrap sunglasses." };
 }
 function formatFetchTime(date: Date): string {
   return date.toLocaleTimeString("en-AU", { hour: "2-digit", minute: "2-digit", hour12: true });
 }
 
 // ─── Burn time estimator data (based on WHO / SWA guidelines) ────────────────
-// Minutes to burn for skin type I at UV 1, scaled by UV and skin type factor
 const SKIN_TYPES = [
-  { id: 1, label: "Type I",   desc: "Always burns, never tans",          factor: 1.0,  example: "Very fair, freckles, red/blonde hair" },
-  { id: 2, label: "Type II",  desc: "Usually burns, tans minimally",     factor: 1.5,  example: "Fair skin, blue/hazel eyes" },
-  { id: 3, label: "Type III", desc: "Sometimes burns, tans gradually",   factor: 2.5,  example: "Medium skin, brown hair/eyes" },
-  { id: 4, label: "Type IV",  desc: "Rarely burns, tans easily",         factor: 4.0,  example: "Olive/light brown skin" },
-  { id: 5, label: "Type V",   desc: "Very rarely burns, tans very easily",factor: 8.0,  example: "Brown/dark brown skin" },
-  { id: 6, label: "Type VI",  desc: "Never burns",                        factor: 15.0, example: "Deeply pigmented dark skin" },
+  { id: 1, label: "Type I",   desc: "Always burns, never tans",           factor: 1.0,  example: "Very fair, freckles, red/blonde hair" },
+  { id: 2, label: "Type II",  desc: "Usually burns, tans minimally",      factor: 1.5,  example: "Fair skin, blue/hazel eyes" },
+  { id: 3, label: "Type III", desc: "Sometimes burns, tans gradually",    factor: 2.5,  example: "Medium skin, brown hair/eyes" },
+  { id: 4, label: "Type IV",  desc: "Rarely burns, tans easily",          factor: 4.0,  example: "Olive/light brown skin" },
+  { id: 5, label: "Type V",   desc: "Very rarely burns, tans very easily", factor: 8.0,  example: "Brown/dark brown skin" },
+  { id: 6, label: "Type VI",  desc: "Never burns",                         factor: 15.0, example: "Deeply pigmented dark skin" },
 ];
-// Unprotected burn time (min) = (200 * skinFactor) / UV  (simplified Diffey formula)
 function burnTimeMinutes(uv: number, skinFactor: number): number {
   if (uv <= 0) return 999;
   return Math.round((200 * skinFactor) / uv);
@@ -80,44 +78,40 @@ function fmtBurnTime(mins: number): string {
 
 // ─── UV health effects per level ─────────────────────────────────────────────
 function getHealthEffects(uv: number) {
-  const base = [
-    { icon: "skin",  label: "Skin",  effect: uv <= 2 ? "No sunburn risk" : uv <= 5 ? "Sunburn possible within ~1 hr (Type I skin)" : uv <= 7 ? "Sunburn in as little as 25 min" : uv <= 10 ? "Sunburn in under 20 min" : "Sunburn in under 10 min" },
-    { icon: "eye",   label: "Eyes",  effect: uv <= 2 ? "Minimal eye risk" : uv <= 5 ? "UV-protective sunglasses advised" : "UV sunglasses essential \u2014 photokeratitis risk" },
-    { icon: "dna",   label: "DNA",   effect: uv <= 2 ? "Low DNA damage risk" : uv <= 5 ? "DNA damage begins \u2014 cumulative over lifetime" : "Active DNA damage \u2014 increases skin cancer risk" },
-    { icon: "immune",label: "Immune",effect: uv <= 2 ? "No immunosuppression" : "Prolonged exposure can suppress local immune response" },
+  return [
+    { icon: "skin",   label: "Skin",   effect: uv <= 2 ? "No sunburn risk" : uv <= 5 ? "Sunburn possible within ~1 hr (Type I skin)" : uv <= 7 ? "Sunburn in as little as 25 min" : uv <= 10 ? "Sunburn in under 20 min" : "Sunburn in under 10 min" },
+    { icon: "eye",    label: "Eyes",   effect: uv <= 2 ? "Minimal eye risk" : uv <= 5 ? "UV-protective sunglasses advised" : "UV sunglasses essential — photokeratitis risk" },
+    { icon: "dna",    label: "DNA",    effect: uv <= 2 ? "Low DNA damage risk" : uv <= 5 ? "DNA damage begins — cumulative over lifetime" : "Active DNA damage — increases skin cancer risk" },
+    { icon: "immune", label: "Immune", effect: uv <= 2 ? "No immunosuppression" : "Prolonged exposure can suppress local immune response" },
   ];
-  return base;
 }
 
 // ─── Protection checklist per UV level ───────────────────────────────────────
 function getProtectionChecklist(uv: number) {
-  const always = [
-    { done: uv >= 3, label: "SPF 50+ sunscreen (apply 20 min before going out)" },
-    { done: uv >= 3, label: "Reapply every 2 hours or after swimming/sweating" },
-  ];
-  const extra = [
-    { done: uv >= 3, label: "Broad-brimmed hat (covers face, neck, ears)" },
-    { done: uv >= 3, label: "UV-protective wrap-around sunglasses" },
-    { done: uv >= 6, label: "Seek shade between 10 am \u2013 3 pm" },
-    { done: uv >= 6, label: "Sun-protective (UPF 50+) clothing" },
-    { done: uv >= 8, label: "Long sleeves & pants" },
+  return [
+    { done: uv >= 3,  label: "SPF 50+ sunscreen (apply 20 min before going out)" },
+    { done: uv >= 3,  label: "Reapply every 2 hours or after swimming/sweating" },
+    { done: uv >= 3,  label: "Broad-brimmed hat (covers face, neck, ears)" },
+    { done: uv >= 3,  label: "UV-protective wrap-around sunglasses" },
+    { done: uv >= 6,  label: "Seek shade between 10 am – 3 pm" },
+    { done: uv >= 6,  label: "Sun-protective (UPF 50+) clothing" },
+    { done: uv >= 8,  label: "Long sleeves & pants" },
     { done: uv >= 11, label: "Avoid outdoor exposure entirely if possible" },
   ];
-  return [...always, ...extra];
 }
 
 // ─── Did-you-know facts ───────────────────────────────────────────────────────
 const UV_FACTS = [
   "2 in 3 Australians will be diagnosed with skin cancer by age 70 — one of the world's highest rates. (ARPANSA)",
-  "UV radiation is present even on cloudy days — clouds block only 10\u201320% of UV. (WHO)",
+  "UV radiation is present even on cloudy days — clouds block only 10–20% of UV. (WHO)",
   "Sand reflects up to 15% of UV, snow up to 80%, and water up to 10%. (WHO)",
-  "UV increases ~10\u201312% for every 1,000 m gain in altitude. (WHO)",
-  "UVA rays penetrate glass \u2014 window-side exposure still causes skin ageing. (Skin Cancer Foundation)",
-  "Sunscreen degrades in UV light \u2014 SPF 50 applied at 8 am offers minimal protection by 10 am without reapplication. (Cancer Council AU)",
+  "UV increases ~10–12% for every 1,000 m gain in altitude. (WHO)",
+  "UVA rays penetrate glass — window-side exposure still causes skin ageing. (Skin Cancer Foundation)",
+  "Sunscreen degrades in UV light — SPF 50 applied at 8 am offers minimal protection by 10 am without reapplication. (Cancer Council AU)",
   "You need ~35 mL (7 teaspoons) to cover your whole body correctly. (Australian Prescriber)",
   "The teaspoon rule: 1 tsp per arm, per leg, front torso, back torso, and face/neck. (Cancer Council AU)",
-  "UV damage is cumulative and irreversible \u2014 even one bad sunburn in childhood increases lifetime cancer risk. (Skin Cancer Foundation)",
-  "Tanning beds use UVA \u2014 they still increase melanoma risk despite not causing immediate redness. (ABC Science)",
+  "UV damage is cumulative and irreversible — even one bad sunburn in childhood increases lifetime cancer risk. (Skin Cancer Foundation)",
+  "Tanning beds use UVA — they still increase melanoma risk despite not causing immediate redness. (ABC Science)",
 ];
 
 const OW_API_KEY = import.meta.env.VITE_OPENWEATHER_API_KEY;
@@ -171,8 +165,7 @@ export default function DashboardPage() {
   const [searchError, setSearchError]   = useState<string | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
-  // Burn time estimator state
-  const [selectedSkinType, setSelectedSkinType] = useState(2); // default Type II
+  const [selectedSkinType, setSelectedSkinType] = useState(2);
   const [showChecklist, setShowChecklist]        = useState(true);
   const [factIndex, setFactIndex]                = useState(() => Math.floor(Math.random() * UV_FACTS.length));
 
@@ -222,7 +215,7 @@ export default function DashboardPage() {
     setSearching(true); setSearchError(null); setLocError(null);
     try {
       const result = await geocodeSearch(q);
-      if (!result) { setSearchError(`No results found for \u201c${q}\u201d. Try a city or suburb name.`); setSearching(false); return; }
+      if (!result) { setSearchError(`No results found for "${q}". Try a city or suburb name.`); setSearching(false); return; }
       const { lat, lon, displayName } = result;
       const cached = readUVCache(lat, lon);
       if (cached && cached.hourlyForecast.length > 0) {
@@ -244,10 +237,8 @@ export default function DashboardPage() {
   const yAxisMax      = Math.max(4, Math.ceil(maxForecastUV * 1.2));
   const forecastColor = getForecastGradientColor(maxForecastUV);
 
-  // Derived data for new sections
   const selectedSkin    = SKIN_TYPES[selectedSkinType - 1];
   const burnMins        = burnTimeMinutes(currentUV, selectedSkin.factor);
-  const protectedMins   = burnTimeMinutes(currentUV / 50, selectedSkin.factor); // rough SPF-50 estimate
   const healthEffects   = getHealthEffects(currentUV);
   const checklist       = getProtectionChecklist(currentUV);
   const activeChecklist = checklist.filter(c => c.done);
@@ -281,7 +272,7 @@ export default function DashboardPage() {
   return (
     <div className="flex flex-col gap-6">
 
-      {/* ── Alerts ── */}
+      {/* Alerts */}
       {currentUV >= 6 && !uvLoading && (
         <div className="bg-[#fff7ed] border border-[#ff6900] rounded-xl px-5 py-4 flex items-start gap-3">
           <AlertTriangle size={18} className="text-[#0a0a0a] mt-0.5 shrink-0" />
@@ -294,11 +285,11 @@ export default function DashboardPage() {
       {currentUV >= 3 && currentUV <= 5 && !uvLoading && (
         <div className="bg-[#fefce8] border border-[#fde68a] rounded-xl px-5 py-3 flex items-center gap-3">
           <Sun size={16} className="text-[#F0B100] shrink-0" />
-          <p className="text-[#713f12] text-[13px]">UV is {currentUV} \u2014 sunscreen is required from UV 3 and above. Apply <strong>SPF 50+</strong> before heading out.</p>
+          <p className="text-[#713f12] text-[13px]">UV is {currentUV} — sunscreen is required from UV 3 and above. Apply <strong>SPF 50+</strong> before heading out.</p>
         </div>
       )}
 
-      {/* ── Did You Know fact strip ── */}
+      {/* Did You Know fact strip */}
       <div className="bg-gradient-to-r from-[#fff7ed] to-[#fefce8] border border-[#fde68a] rounded-xl px-4 py-3 flex items-start gap-3">
         <Lightbulb size={16} className="text-[#F0B100] shrink-0 mt-0.5" />
         <div className="flex-1 min-w-0">
@@ -308,10 +299,10 @@ export default function DashboardPage() {
         <button
           onClick={() => setFactIndex(i => (i + 1) % UV_FACTS.length)}
           className="text-[11px] text-[#b45309] hover:text-[#FF6900] font-medium shrink-0 cursor-pointer underline-offset-2 hover:underline"
-        >Next ›</button>
+        >Next &rsaquo;</button>
       </div>
 
-      {/* ── Top stat cards ── */}
+      {/* Top stat cards */}
       <div className="grid grid-cols-1 lg:grid-cols-[2fr_1fr_1fr] gap-6">
 
         {/* Current UV card */}
@@ -389,9 +380,9 @@ export default function DashboardPage() {
                   )}
                 </div>
                 <p className="text-[#4a5565] text-[13px] mt-2">
-                  {currentUV <= 2 ? "UV is low \u2014 no sun protection needed right now."
+                  {currentUV <= 2 ? "UV is low — no sun protection needed right now."
                     : currentUV <= 5 ? "Sunscreen required. Apply SPF 50+ before going outside."
-                    : "High UV \u2014 SPF 50+ essential. Seek shade during peak hours."}
+                    : "High UV — SPF 50+ essential. Seek shade during peak hours."}
                 </p>
               </div>
               <div className="flex flex-col gap-1.5 shrink-0">
@@ -423,8 +414,8 @@ export default function DashboardPage() {
                     currentUV <= 2  && { label: "No SPF needed",     bg: "bg-green-50",  text: "text-green-700",  border: "border-green-200" },
                     currentUV >= 3 && currentUV <= 5  && { label: "SPF 50+ advised",  bg: "bg-yellow-50", text: "text-yellow-700", border: "border-yellow-200" },
                     currentUV >= 6 && currentUV <= 7  && { label: "SPF 50+ required", bg: "bg-orange-50", text: "text-orange-700", border: "border-orange-200" },
-                    currentUV >= 8 && currentUV <= 10 && { label: "Max protection",   bg: "bg-red-50",    text: "text-red-700",    border: "border-red-200" },
-                    currentUV >= 11 && { label: "Stay indoors",       bg: "bg-purple-50", text: "text-purple-700", border: "border-purple-200" },
+                    currentUV >= 8 && currentUV <= 10 && { label: "Max protection",   bg: "bg-red-50",    text: "text-red-700",   border: "border-red-200" },
+                    currentUV >= 11 && { label: "Stay indoors",      bg: "bg-purple-50", text: "text-purple-700", border: "border-purple-200" },
                   ].filter(Boolean).map((pill: any) => (
                     <span key={pill.label} className={`text-[11px] font-semibold px-2.5 py-1 rounded-full border ${pill.bg} ${pill.text} ${pill.border}`}>{pill.label}</span>
                   ))}
@@ -447,8 +438,8 @@ export default function DashboardPage() {
                 <p className="text-[#4a5565] text-[13px] mt-2 leading-snug">{getPeakHoursDescription(peakHours)}</p>
                 <div className="mt-4">
                   {peakHours === "No peak hours today"
-                    ? <span className="text-[11px] font-semibold px-2.5 py-1 rounded-full border bg-green-50 text-green-700 border-green-200">\u2713 Safe all day</span>
-                    : <span className="text-[11px] font-semibold px-2.5 py-1 rounded-full border bg-orange-50 text-orange-700 border-orange-200">\u26a0\ufe0f Seek shade & reapply SPF</span>}
+                    ? <span className="text-[11px] font-semibold px-2.5 py-1 rounded-full border bg-green-50 text-green-700 border-green-200">&#10003; Safe all day</span>
+                    : <span className="text-[11px] font-semibold px-2.5 py-1 rounded-full border bg-orange-50 text-orange-700 border-orange-200">&#9888; Seek shade &amp; reapply SPF</span>}
                 </div>
               </>
             )}
@@ -456,7 +447,7 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* ── 12-Hour Forecast ── */}
+      {/* 12-Hour Forecast */}
       <div className="bg-white rounded-2xl border border-black/10 p-6">
         <div className="flex items-center justify-between mb-1">
           <div className="flex items-center gap-2">
@@ -469,7 +460,7 @@ export default function DashboardPage() {
             </div>
           )}
         </div>
-        <p className="text-[#717182] text-[13px] mb-4">Plan your outdoor activities safely \u2014 SPF 50+ required when UV reaches 3</p>
+        <p className="text-[#717182] text-[13px] mb-4">Plan your outdoor activities safely — SPF 50+ required when UV reaches 3</p>
         {uvLoading ? (
           <div className="h-[240px] flex items-center justify-center">
             <div className="flex flex-col items-center gap-2">
@@ -510,7 +501,7 @@ export default function DashboardPage() {
         )}
       </div>
 
-      {/* ── Burn Time Estimator + Health Effects ── */}
+      {/* Burn Time Estimator + Health Effects */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
         {/* Burn Time Estimator */}
@@ -523,7 +514,6 @@ export default function DashboardPage() {
             <p className="text-[#717182] text-[12px]">Estimated time before UV damage begins for your skin type at UV {currentUV}</p>
           </div>
 
-          {/* Skin type selector */}
           <div className="grid grid-cols-3 gap-1.5">
             {SKIN_TYPES.map(st => (
               <button key={st.id} onClick={() => setSelectedSkinType(st.id)}
@@ -538,31 +528,29 @@ export default function DashboardPage() {
             ))}
           </div>
 
-          {/* Selected skin type detail */}
           <div className="bg-gray-50 rounded-xl px-4 py-3 border border-black/5">
             <p className="text-[11px] text-[#6a7282] mb-1"><span className="font-semibold text-[#4a5565]">{selectedSkin.label}:</span> {selectedSkin.example}</p>
             <p className="text-[11px] text-[#6a7282]">{selectedSkin.desc}</p>
           </div>
 
-          {/* Burn time result */}
           <div className="grid grid-cols-2 gap-3">
             <div className="bg-[#fff1f2] border border-red-100 rounded-xl p-3 text-center">
-              <p className="text-[10px] text-[#9f2d00] font-semibold mb-1">\u26a0\ufe0f Without SPF</p>
+              <p className="text-[10px] text-[#9f2d00] font-semibold mb-1">&#9888; Without SPF</p>
               <p className="text-[22px] font-extrabold text-[#dc2626] leading-none">
-                {uvLoading ? "\u2014" : fmtBurnTime(burnMins)}
+                {uvLoading ? "—" : fmtBurnTime(burnMins)}
               </p>
               <p className="text-[10px] text-[#6a7282] mt-1">before damage begins</p>
             </div>
             <div className="bg-[#f0fdf4] border border-green-100 rounded-xl p-3 text-center">
-              <p className="text-[10px] text-[#166534] font-semibold mb-1">\u2713 With SPF 50+</p>
+              <p className="text-[10px] text-[#166534] font-semibold mb-1">&#10003; With SPF 50+</p>
               <p className="text-[22px] font-extrabold text-[#16a34a] leading-none">
-                {uvLoading ? "\u2014" : (burnMins >= 999 ? "No risk" : fmtBurnTime(Math.min(burnMins * 50, 480)))}
+                {uvLoading ? "—" : (burnMins >= 999 ? "No risk" : fmtBurnTime(Math.min(burnMins * 50, 480)))}
               </p>
               <p className="text-[10px] text-[#6a7282] mt-1">estimated protection</p>
             </div>
           </div>
           <p className="text-[10px] text-[#9ca3af] leading-snug">
-            Based on simplified WHO/Diffey formula. Actual times vary by skin condition, altitude, reflection & sunscreen coverage. Always reapply every 2 hours regardless.
+            Based on simplified WHO/Diffey formula. Actual times vary by skin condition, altitude, reflection &amp; sunscreen coverage. Always reapply every 2 hours regardless.
           </p>
         </div>
 
@@ -595,22 +583,21 @@ export default function DashboardPage() {
             })}
           </div>
 
-          {/* UV cumulative damage note */}
           <div className="bg-[#eff6ff] border border-blue-100 rounded-xl px-3 py-2.5">
             <p className="text-[11px] text-[#1d4ed8] leading-snug">
-              <span className="font-semibold">Cumulative damage:</span> UV damage builds up over your lifetime and cannot be reversed. Each exposure \u2014 even without sunburn \u2014 increases long-term skin cancer risk. (Skin Cancer Foundation)
+              <span className="font-semibold">Cumulative damage:</span> UV damage builds up over your lifetime and cannot be reversed. Each exposure — even without sunburn — increases long-term skin cancer risk. (Skin Cancer Foundation)
             </p>
           </div>
         </div>
       </div>
 
-      {/* ── Skin Type Protection Guide ── */}
+      {/* Skin Type Protection Guide */}
       <div className="bg-white rounded-2xl border border-black/10 p-5">
         <div className="flex items-center gap-2 mb-1">
           <Shirt size={16} className="text-[#9810fa]" />
           <h3 className="text-[#0a0a0a] text-[15px] font-semibold">Skin Type Protection Guide</h3>
         </div>
-        <p className="text-[#717182] text-[12px] mb-4">Unprotected burn times at current UV {currentUV} — all skin types need SPF 50+ when UV \u2265 3 (WHO / Safe Work Australia)</p>
+        <p className="text-[#717182] text-[12px] mb-4">Unprotected burn times at current UV {currentUV} — all skin types need SPF 50+ when UV &ge; 3 (WHO / Safe Work Australia)</p>
         <div className="overflow-x-auto">
           <table className="w-full text-[12px] border-collapse">
             <thead>
@@ -636,8 +623,8 @@ export default function DashboardPage() {
                       <span className={`font-semibold ${isSelected ? "text-[#FF6900]" : "text-[#101828]"}`}>{st.label}</span>
                     </td>
                     <td className="py-2 pr-4 text-[#6a7282]">{st.desc}</td>
-                    <td className="py-2 pr-4 text-right font-semibold text-[#dc2626]">{uvLoading ? "\u2014" : fmtBurnTime(bm)}</td>
-                    <td className="py-2 text-right font-semibold text-[#16a34a]">{uvLoading ? "\u2014" : spf}</td>
+                    <td className="py-2 pr-4 text-right font-semibold text-[#dc2626]">{uvLoading ? "—" : fmtBurnTime(bm)}</td>
+                    <td className="py-2 text-right font-semibold text-[#16a34a]">{uvLoading ? "—" : spf}</td>
                   </tr>
                 );
               })}
@@ -647,7 +634,7 @@ export default function DashboardPage() {
         <p className="text-[10px] text-[#9ca3af] mt-3">SPF 50+ estimate assumes correct application (35 mL full body coverage). Always reapply every 2 hours regardless of SPF rating.</p>
       </div>
 
-      {/* ── Protection Checklist + Map ── */}
+      {/* Protection Checklist + Map */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
         {/* Protection Checklist */}
@@ -672,14 +659,12 @@ export default function DashboardPage() {
             <div className="flex flex-col gap-2">
               {checklist.map((item, i) => (
                 <div key={i} className={`flex items-start gap-3 rounded-xl px-3 py-2.5 border ${
-                  item.done
-                    ? "bg-[#f0fdf4] border-green-100"
-                    : "bg-gray-50 border-black/5 opacity-40"
+                  item.done ? "bg-[#f0fdf4] border-green-100" : "bg-gray-50 border-black/5 opacity-40"
                 }`}>
                   <div className={`w-4 h-4 rounded-full shrink-0 mt-0.5 flex items-center justify-center ${
                     item.done ? "bg-[#16a34a]" : "bg-gray-200"
                   }`}>
-                    {item.done && <span className="text-white text-[9px] font-bold">\u2713</span>}
+                    {item.done && <span className="text-white text-[9px] font-bold">&#10003;</span>}
                   </div>
                   <p className={`text-[12px] leading-snug ${item.done ? "text-[#101828] font-medium" : "text-[#6a7282]"}`}>{item.label}</p>
                 </div>
@@ -687,10 +672,9 @@ export default function DashboardPage() {
             </div>
           )}
 
-          {/* Australia-specific callout */}
           <div className="bg-[#fff7ed] border border-[#ffcf99] rounded-xl px-3 py-2.5 mt-auto">
             <p className="text-[11px] text-[#7e2a0c] leading-snug">
-              <span className="font-semibold">\ud83c\udde6\ud83c\uddfa Australia:</span> 2 in 3 Australians will develop skin cancer by age 70 \u2014 the world\u2019s highest rate. Consistent daily protection is the most effective prevention. (ARPANSA)
+              <span className="font-semibold">&#127462;&#127482; Australia:</span> 2 in 3 Australians will develop skin cancer by age 70 — the world&apos;s highest rate. Consistent daily protection is the most effective prevention. (ARPANSA)
             </p>
           </div>
         </div>
@@ -708,12 +692,12 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* ── Sunscreen Recommendation ── */}
+      {/* Sunscreen Recommendation */}
       <div className="bg-white rounded-2xl border border-black/10 p-5">
         <div className="flex items-start justify-between mb-1">
           <div>
             <h3 className="text-[#0a0a0a] text-[15px] font-semibold">Sunscreen Recommendation</h3>
-            <p className="text-[#717182] text-[12px] mt-0.5">Based on current UV \u2014 SPF 50+ required at UV 3+ (WHO / Cancer Council AU)</p>
+            <p className="text-[#717182] text-[12px] mt-0.5">Based on current UV — SPF 50+ required at UV 3+ (WHO / Cancer Council AU)</p>
           </div>
           {recSource === "fallback" && (
             <span className="text-[10px] text-[#6a7282] bg-gray-100 px-2 py-0.5 rounded-lg border border-black/5 shrink-0">Built-in</span>
@@ -724,8 +708,8 @@ export default function DashboardPage() {
           <div className="flex-1">
             <p className="text-[#101828] text-[13px] font-semibold">
               {sunscreenRec
-                ? currentUV <= 2 ? "No sunscreen required at UV 0\u20132."
-                  : `${sunscreenRec.spfLevel} required \u2014 UV is ${currentUV} (${riskLevel}).`
+                ? currentUV <= 2 ? "No sunscreen required at UV 0-2."
+                  : `${sunscreenRec.spfLevel} required — UV is ${currentUV} (${riskLevel}).`
                 : "Loading recommendation..."}
             </p>
             <p className="text-[#4a5565] text-[13px] mt-1 leading-snug">
@@ -736,17 +720,17 @@ export default function DashboardPage() {
                 {[
                   "Apply SPF 50+ 20 minutes before going outside",
                   "Use 1 tsp per body area (35 mL total for full body)",
-                  "Reapply every 2 hours \u2014 even on cloudy days",
+                  "Reapply every 2 hours — even on cloudy days",
                   "Reapply immediately after swimming or heavy sweating",
                   "Use broad-spectrum (UVA + UVB) SPF 50+",
                   "Protect lips with SPF 30+ lip balm",
                   currentUV >= 6 ? "Seek shade between 10 am and 3 pm" : null,
-                  currentUV >= 6 ? "Wear a broad-brimmed hat (brim \u2265 7.5 cm)" : null,
+                  currentUV >= 6 ? "Wear a broad-brimmed hat (brim 7.5 cm+)" : null,
                   currentUV >= 8 ? "Wear long sleeves and sun-protective clothing" : null,
                   currentUV >= 8 ? "Minimise outdoor time during peak hours" : null,
                 ].filter(Boolean).map(tip => (
                   <div key={tip} className="flex items-start gap-2 text-[12px] text-[#4a5565]">
-                    <span className="text-[#FF6900] mt-0.5 shrink-0">\u2713</span>{tip}
+                    <span className="text-[#FF6900] mt-0.5 shrink-0">&#10003;</span>{tip}
                   </div>
                 ))}
               </div>

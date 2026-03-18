@@ -4,13 +4,14 @@ import { Sun, ArrowRight, LocateFixed, Loader2, CheckCircle2 } from "lucide-reac
 
 const backendUrl = import.meta.env.VITE_BACKEND_URL;
 
+// Fitzpatrick scale skin tone hex colours (dermatology standard)
 const SKIN_TYPES = [
-  { id: 1, label: "Type I — Very Fair",       desc: "Always burns, never tans" },
-  { id: 2, label: "Type II — Fair",            desc: "Usually burns, tans minimally" },
-  { id: 3, label: "Type III — Medium",         desc: "Sometimes burns, gradually tans" },
-  { id: 4, label: "Type IV — Olive",           desc: "Rarely burns, tans easily" },
-  { id: 5, label: "Type V — Brown",            desc: "Very rarely burns, tans very easily" },
-  { id: 6, label: "Type VI — Dark Brown/Black", desc: "Never burns, deeply pigmented" },
+  { id: 1, label: "Type I — Very Fair",        desc: "Always burns, never tans",             tone: "#FDDBB4", emoji: "👱" },
+  { id: 2, label: "Type II — Fair",             desc: "Usually burns, tans minimally",        tone: "#F5C498", emoji: "😊" },
+  { id: 3, label: "Type III — Medium",          desc: "Sometimes burns, gradually tans",      tone: "#D4956A", emoji: "🙂" },
+  { id: 4, label: "Type IV — Olive",            desc: "Rarely burns, tans easily",            tone: "#A0694A", emoji: "😎" },
+  { id: 5, label: "Type V — Brown",             desc: "Very rarely burns, tans very easily",  tone: "#6B3F2A", emoji: "🤎" },
+  { id: 6, label: "Type VI — Dark Brown/Black", desc: "Never burns, deeply pigmented",        tone: "#3B1F10", emoji: "🖤" },
 ];
 
 export default function OnboardingPage() {
@@ -26,7 +27,6 @@ export default function OnboardingPage() {
   const nextStep = () => setStep((s) => s + 1);
   const prevStep = () => setStep((s) => s - 1);
 
-  /** Detect current location using browser geolocation + reverse geocoding */
   const detectLocation = () => {
     if (!navigator.geolocation) return;
     setLocation("Detecting...");
@@ -47,47 +47,28 @@ export default function OnboardingPage() {
     );
   };
 
-  /** Save all onboarding fields to the DB via PATCH /users/me */
   const finishOnboarding = async () => {
     setError("");
     setSaving(true);
-
     const token = localStorage.getItem("sunguard_token");
-    if (!token) {
-      navigate("/login");
-      return;
-    }
-
+    if (!token) { navigate("/login"); return; }
     try {
       const res = await fetch(`${backendUrl}/users/me`, {
         method:  "PATCH",
-        headers: {
-          "Content-Type":  "application/json",
-          "Authorization": `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          nickname:  nickname.trim() || null,
-          skin_type: skinType,
-          location:  location.trim() || null,
-          onboarded: true,
-        }),
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+        body: JSON.stringify({ nickname: nickname.trim() || null, skin_type: skinType, location: location.trim() || null, onboarded: true }),
       });
-
       if (!res.ok) {
         const data = await res.json();
         setError(data.error || "Failed to save your profile. Please try again.");
         setSaving(false);
         return;
       }
-
       const updated = await res.json();
-
-      // Sync localStorage with the saved values
       localStorage.setItem("sunguard_loggedin",  "true");
       if (updated.nickname)  localStorage.setItem("sunguard_username",  updated.nickname);
       if (updated.skin_type) localStorage.setItem("sunguard_skin_type", String(updated.skin_type));
       if (updated.location)  localStorage.setItem("sunguard_location",  updated.location);
-
       navigate("/dashboard");
     } catch {
       setError("Could not reach the server. Please check your connection.");
@@ -97,10 +78,8 @@ export default function OnboardingPage() {
 
   const LogoHeader = () => (
     <div className="flex flex-col items-center justify-center mb-10">
-      <div
-        className="w-[140px] h-[140px] rounded-full flex items-center justify-center mb-6 shadow-md"
-        style={{ backgroundImage: "linear-gradient(136deg, rgb(255, 137, 4) 0%, rgb(246, 51, 154) 100%)" }}
-      >
+      <div className="w-[140px] h-[140px] rounded-full flex items-center justify-center mb-6 shadow-md"
+        style={{ backgroundImage: "linear-gradient(136deg, rgb(255, 137, 4) 0%, rgb(246, 51, 154) 100%)" }}>
         <Sun className="text-white" size={64} strokeWidth={1.5} />
       </div>
       <div className="text-center">
@@ -110,24 +89,18 @@ export default function OnboardingPage() {
     </div>
   );
 
-  // Progress dots
   const totalSteps = 5;
   const ProgressDots = () => (
     <div className="flex items-center gap-2 mb-8">
       {Array.from({ length: totalSteps }).map((_, i) => (
-        <div
-          key={i}
-          className={`rounded-full transition-all ${
-            i + 1 === step
-              ? "w-6 h-3 bg-[#3B73FF]"
-              : i + 1 < step
-              ? "w-3 h-3 bg-[#3B73FF] opacity-50"
-              : "w-3 h-3 bg-gray-300"
-          }`}
-        />
+        <div key={i} className={`rounded-full transition-all ${
+          i + 1 === step ? "w-6 h-3 bg-[#3B73FF]" : i + 1 < step ? "w-3 h-3 bg-[#3B73FF] opacity-50" : "w-3 h-3 bg-gray-300"
+        }`} />
       ))}
     </div>
   );
+
+  const selectedType = SKIN_TYPES.find((t) => t.id === skinType);
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-[#F2EDFA] to-[#E9E4F0] flex flex-col items-center py-16 px-6">
@@ -139,16 +112,10 @@ export default function OnboardingPage() {
         {step === 1 && (
           <div className="flex flex-col items-center w-full max-w-[400px] mt-12 animate-in fade-in zoom-in duration-500">
             <p className="text-[#6a7282] text-[18px] text-center mb-10">Let's set up your personal UV protection profile. It only takes a minute.</p>
-            <button
-              onClick={nextStep}
-              className="w-full h-[72px] bg-[#3B73FF] hover:bg-[#285DE6] text-white rounded-[24px] text-[24px] font-semibold transition-colors cursor-pointer flex items-center justify-center gap-3 shadow-md"
-            >
+            <button onClick={nextStep} className="w-full h-[72px] bg-[#3B73FF] hover:bg-[#285DE6] text-white rounded-[24px] text-[24px] font-semibold transition-colors cursor-pointer flex items-center justify-center gap-3 shadow-md">
               Get Started <ArrowRight size={26} />
             </button>
-            <button
-              onClick={() => navigate("/signup")}
-              className="w-full h-[56px] bg-transparent text-[#3B73FF] rounded-[24px] text-[18px] font-medium cursor-pointer flex items-center justify-center mt-3"
-            >
+            <button onClick={() => navigate("/signup")} className="w-full h-[56px] bg-transparent text-[#3B73FF] rounded-[24px] text-[18px] font-medium cursor-pointer flex items-center justify-center mt-3">
               Back to Sign Up
             </button>
           </div>
@@ -160,9 +127,7 @@ export default function OnboardingPage() {
             <h2 className="text-[32px] text-[#101828] font-bold mb-2 w-full text-left">What should we call you?</h2>
             <p className="text-[#6a7282] text-[15px] w-full text-left mb-6">This is the name shown in your dashboard.</p>
             <input
-              type="text"
-              value={nickname}
-              onChange={(e) => setNickname(e.target.value)}
+              type="text" value={nickname} onChange={(e) => setNickname(e.target.value)}
               placeholder="Your nickname"
               className="w-full h-[64px] bg-white rounded-[20px] px-6 border-none outline-none text-[20px] text-gray-900 shadow-sm focus:ring-2 focus:ring-[#155dfc] mb-10 placeholder:text-gray-300"
             />
@@ -182,18 +147,41 @@ export default function OnboardingPage() {
           <div className="flex flex-col w-full max-w-[600px] mt-2 animate-in slide-in-from-right-8 duration-400">
             <h2 className="text-[30px] text-[#101828] font-bold mb-1">What's your skin type?</h2>
             <p className="text-[#6a7282] text-[14px] mb-6">Used to personalise your UV exposure risk advice (Fitzpatrick scale).</p>
+
+            {/* Skin tone palette preview */}
+            <div className="flex gap-2 mb-5 justify-center">
+              {SKIN_TYPES.map((type) => (
+                <button
+                  key={type.id}
+                  onClick={() => setSkinType(type.id)}
+                  title={type.label}
+                  className={`transition-all rounded-full border-4 ${
+                    skinType === type.id
+                      ? "scale-125 border-[#3B73FF] shadow-lg"
+                      : "border-white/60 hover:scale-110 hover:border-white"
+                  }`}
+                  style={{ width: 44, height: 44, backgroundColor: type.tone }}
+                />
+              ))}
+            </div>
+
             <div className="flex flex-col gap-3 mb-8">
               {SKIN_TYPES.map((type) => (
                 <button
                   key={type.id}
                   onClick={() => setSkinType(type.id)}
-                  className={`w-full text-left px-6 py-4 rounded-[18px] transition-all flex items-center justify-between ${
+                  className={`w-full text-left px-5 py-4 rounded-[18px] transition-all flex items-center gap-4 ${
                     skinType === type.id
                       ? "bg-gradient-to-r from-[#e9d4ff] to-[#f4e8ff] shadow-md border-2 border-[#d0a3ff]"
                       : "bg-white/60 hover:bg-white shadow-sm border-2 border-transparent"
                   }`}
                 >
-                  <div>
+                  {/* Skin tone swatch */}
+                  <div
+                    className="w-10 h-10 rounded-full shrink-0 border-2 border-white shadow-sm"
+                    style={{ backgroundColor: type.tone }}
+                  />
+                  <div className="flex-1">
                     <p className="text-[16px] font-semibold text-[#101828]">{type.label}</p>
                     <p className="text-[13px] text-[#6a7282] mt-0.5">{type.desc}</p>
                   </div>
@@ -201,6 +189,14 @@ export default function OnboardingPage() {
                 </button>
               ))}
             </div>
+
+            {selectedType && (
+              <div className="flex items-center gap-3 mb-5 px-5 py-3 bg-white/70 rounded-2xl border border-[#d0a3ff]/40">
+                <div className="w-8 h-8 rounded-full shrink-0 border-2 border-white shadow" style={{ backgroundColor: selectedType.tone }} />
+                <p className="text-[14px] font-semibold text-[#101828]">Selected: <span className="text-[#9810FA]">{selectedType.label}</span></p>
+              </div>
+            )}
+
             <div className="flex flex-col gap-3 max-w-[420px] mx-auto w-full">
               <button onClick={nextStep} disabled={skinType === null} className="w-full h-[64px] bg-[#3B73FF] hover:bg-[#285DE6] disabled:opacity-50 text-white rounded-[22px] text-[22px] font-semibold transition-colors cursor-pointer flex items-center justify-center gap-3 shadow-md">
                 Next <ArrowRight size={24} />
@@ -219,27 +215,18 @@ export default function OnboardingPage() {
             <p className="text-[#6a7282] text-[15px] w-full text-left mb-6">Used to personalise UV alerts for your area.</p>
             <div className="relative w-full mb-10">
               <input
-                type="text"
-                value={location}
-                onChange={(e) => setLocation(e.target.value)}
+                type="text" value={location} onChange={(e) => setLocation(e.target.value)}
                 placeholder="e.g. Melbourne, Victoria"
                 className="w-full h-[64px] bg-white rounded-[20px] pl-6 pr-16 border-none outline-none text-[18px] text-gray-900 shadow-sm focus:ring-2 focus:ring-[#155dfc] placeholder:text-gray-300"
               />
-              <button
-                type="button"
-                onClick={detectLocation}
-                title="Detect my location"
-                className="absolute right-5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-[#3B73FF] transition-colors cursor-pointer"
-              >
+              <button type="button" onClick={detectLocation} title="Detect my location"
+                className="absolute right-5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-[#3B73FF] transition-colors cursor-pointer">
                 <LocateFixed size={26} />
               </button>
             </div>
             <div className="flex flex-col w-full gap-3">
-              <button
-                onClick={nextStep}
-                disabled={!location.trim() || location === "Detecting..."}
-                className="w-full h-[64px] bg-[#3B73FF] hover:bg-[#285DE6] disabled:opacity-50 text-white rounded-[22px] text-[22px] font-semibold transition-colors cursor-pointer flex items-center justify-center gap-3 shadow-md"
-              >
+              <button onClick={nextStep} disabled={!location.trim() || location === "Detecting..."}
+                className="w-full h-[64px] bg-[#3B73FF] hover:bg-[#285DE6] disabled:opacity-50 text-white rounded-[22px] text-[22px] font-semibold transition-colors cursor-pointer flex items-center justify-center gap-3 shadow-md">
                 Next <ArrowRight size={24} />
               </button>
               <button onClick={prevStep} className="w-full h-[52px] bg-transparent text-[#3B73FF] rounded-[22px] text-[18px] font-medium cursor-pointer flex items-center justify-center">
@@ -258,19 +245,25 @@ export default function OnboardingPage() {
             <h2 className="text-[40px] font-bold text-[#101828] mb-3 text-center">You're all set!</h2>
             <div className="bg-white/70 rounded-[20px] p-6 w-full mb-8 flex flex-col gap-3">
               {nickname && (
-                <div className="flex justify-between text-[15px]">
+                <div className="flex justify-between items-center text-[15px]">
                   <span className="text-[#6a7282] font-medium">Nickname</span>
                   <span className="text-[#101828] font-semibold">{nickname}</span>
                 </div>
               )}
-              {skinType && (
-                <div className="flex justify-between text-[15px]">
-                  <span className="text-[#6a7282] font-medium">Skin type</span>
-                  <span className="text-[#101828] font-semibold">{SKIN_TYPES.find(s => s.id === skinType)?.label}</span>
-                </div>
-              )}
+              {skinType && (() => {
+                const st = SKIN_TYPES.find(s => s.id === skinType);
+                return (
+                  <div className="flex justify-between items-center text-[15px]">
+                    <span className="text-[#6a7282] font-medium">Skin type</span>
+                    <div className="flex items-center gap-2">
+                      {st && <div className="w-5 h-5 rounded-full border border-gray-200 shadow-sm" style={{ backgroundColor: st.tone }} />}
+                      <span className="text-[#101828] font-semibold">{st?.label}</span>
+                    </div>
+                  </div>
+                );
+              })()}
               {location && (
-                <div className="flex justify-between text-[15px]">
+                <div className="flex justify-between items-center text-[15px]">
                   <span className="text-[#6a7282] font-medium">Location</span>
                   <span className="text-[#101828] font-semibold">{location}</span>
                 </div>
@@ -278,21 +271,12 @@ export default function OnboardingPage() {
             </div>
 
             {error && (
-              <div className="w-full mb-4 bg-red-50 border border-red-200 text-red-700 rounded-xl px-4 py-3 text-[14px]">
-                {error}
-              </div>
+              <div className="w-full mb-4 bg-red-50 border border-red-200 text-red-700 rounded-xl px-4 py-3 text-[14px]">{error}</div>
             )}
 
-            <button
-              onClick={finishOnboarding}
-              disabled={saving}
-              className="w-full h-[68px] bg-[#3B73FF] hover:bg-[#285DE6] disabled:opacity-60 text-white rounded-[22px] text-[22px] font-semibold transition-colors cursor-pointer flex items-center justify-center gap-3 shadow-lg"
-            >
-              {saving ? (
-                <><Loader2 size={24} className="animate-spin" /> Saving...</>
-              ) : (
-                <>Go to Dashboard <ArrowRight size={24} /></>
-              )}
+            <button onClick={finishOnboarding} disabled={saving}
+              className="w-full h-[68px] bg-[#3B73FF] hover:bg-[#285DE6] disabled:opacity-60 text-white rounded-[22px] text-[22px] font-semibold transition-colors cursor-pointer flex items-center justify-center gap-3 shadow-lg">
+              {saving ? (<><Loader2 size={24} className="animate-spin" /> Saving...</>) : (<>Go to Dashboard <ArrowRight size={24} /></>)}
             </button>
             <button onClick={prevStep} className="w-full h-[52px] bg-transparent text-[#3B73FF] rounded-[22px] text-[18px] font-medium cursor-pointer flex items-center justify-center mt-2">
               Back

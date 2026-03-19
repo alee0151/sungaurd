@@ -273,7 +273,8 @@ export default function DashboardPage() {
     });
 
     setFetchedAt(new Date());
-    setShowMapModal(false);
+    // Modal remains open so user can see the selected location on the map.
+    // They can close it manually via the Dialog close button.
   }, [setUVDataOverrides]);
 
   return (
@@ -997,7 +998,8 @@ export default function DashboardPage() {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="mt-2">
+          {/* Explicit height required so Leaflet's absolute-positioned canvas has a defined size */}
+          <div className="mt-2 h-[460px] relative">
             {showMapModal && (
               <UVMap
                 key="uv-map-modal"
@@ -1013,4 +1015,3 @@ export default function DashboardPage() {
     </div>
   );
 }
-

@@ -121,10 +121,7 @@ function UVReportModal({
               <div className="h-full rounded-full transition-all duration-500" style={{ width: `${riskPercent}%`, backgroundColor: risk.color }} />
             </div>
           </div>
-          <div className="bg-[#eff6ff] rounded-2xl p-5">
-            <div className="flex items-center gap-2 mb-2"><AlertCircle size={16} className="text-[#3B82F6]" /><p className="text-[#1e40af] text-[14px] font-bold">General Advice</p></div>
-            <p className="text-[#1e40af] text-[14px] leading-relaxed">{advice.general}</p>
-          </div>
+          
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="bg-[#fff7ed] rounded-2xl p-4"><p className="text-[#9f2d00] text-[13px] font-bold mb-1">UV-Specific Advice</p><p className="text-[#4a5565] text-[13px] leading-relaxed">{advice.uvAdvice}</p></div>
             <div className="bg-[#f0fdf4] rounded-2xl p-4"><p className="text-[#166534] text-[13px] font-bold mb-1">Risk Summary</p><p className="text-[#4a5565] text-[13px] leading-relaxed">{advice.riskText}</p></div>

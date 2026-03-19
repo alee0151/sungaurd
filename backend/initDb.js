@@ -8,6 +8,7 @@ const path = require('path');
 const pool = require('./db');
 
 async function initDb() {
+  console.log(process.env.DATABASE_URL)
   if (!process.env.DATABASE_URL) {
     console.log('[initDb] Skipping schema init — DATABASE_URL not set.');
     return;

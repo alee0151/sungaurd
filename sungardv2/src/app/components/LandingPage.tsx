@@ -493,7 +493,7 @@ export default function LandingPage() {
         </section>
 
         {/* SOCIAL PROOF */}
-        <section className="py-16 bg-[#fff9f5]">
+        {/* <section className="py-16 bg-[#fff9f5]">
           <div className="max-w-[1200px] mx-auto px-6">
             <div className="text-center mb-10">
               <p className="text-orange-500 font-bold text-[13px] uppercase tracking-widest mb-2">People are loving it</p>
@@ -513,10 +513,10 @@ export default function LandingPage() {
               ))}
             </div>
           </div>
-        </section>
+        </section> */}
 
         {/* FAQ */}
-        <section id="faq" className="py-20 bg-white">
+        {/* <section id="faq" className="py-20 bg-white">
           <div className="max-w-[760px] mx-auto px-6">
             <div className="text-center mb-12">
               <p className="text-orange-500 font-bold text-[13px] uppercase tracking-widest mb-2">Got questions?</p>
@@ -536,7 +536,7 @@ export default function LandingPage() {
               ))}
             </div>
           </div>
-        </section>
+        </section> */}
 
         {/* FINAL CTA */}
         <section className="py-24 relative overflow-hidden">

@@ -1,7 +1,8 @@
+import { useNavigate } from "react-router";
 import {
   AlertTriangle, Shield, Clock, TrendingUp, Sun, MapPin, RefreshCw,
   Zap, LocateFixed, Search, X, Eye, Shirt, Umbrella, Activity,
-  Info, ChevronDown, ChevronUp, Lightbulb,
+  Info, ChevronDown, ChevronUp, Lightbulb,BookOpen, ArrowRight,
 } from "lucide-react";
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -10,10 +11,17 @@ import {
 import { useAppContext } from "./Layout";
 import { UVMap } from "./UVMap";
 import { useEffect, useState, useCallback, useRef } from "react";
-import type { CSSProperties } from "react";
+import type { CSSProperties, FormEvent  } from "react";
 import {
   readUVCache, writeUVCache, cacheAgeMinutes, type UVCacheEntry,
 } from "../utils/uvCache";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "./ui/dialog";
 
 // ─── Constants & helpers ─────────────────────────────────────────────────────
 
@@ -133,6 +141,7 @@ async function geocodeSearch(query: string): Promise<{ lat: number; lon: number;
 
 // ─── Component ────────────────────────────────────────────────────────────────
 export default function DashboardPage() {
+  const navigate = useNavigate();
   const { uvData, setUVDataOverrides } = useAppContext();
   const { currentUV, riskLevel, riskColor, peakHours, hourlyForecast, locationName, uvLoading, uvFromCache, uvCacheAgeMinutes } = uvData;
 
@@ -189,7 +198,7 @@ export default function DashboardPage() {
     );
   }, [setUVDataOverrides]);
 
-  const handleSearchLocation = useCallback(async (e?: React.FormEvent) => {
+  const handleSearchLocation = useCallback(async (e?: FormEvent<HTMLFormElement>) => {
     e?.preventDefault();
     const q = searchQuery.trim(); if (!q) return;
     setSearching(true); setSearchError(null); setLocError(null);
@@ -247,23 +256,50 @@ export default function DashboardPage() {
     );
   };
 
+  const [showMapModal, setShowMapModal] = useState(false);
+  const handleMapLocationSelect = useCallback((payload: {
+    uv: number;
+    locationName: string;
+    hourlyForecast: { time: string; uv: number }[];
+    fromCache?: boolean;
+    cacheAgeMinutes?: number;
+  }) => {
+    setUVDataOverrides({
+      uv: payload.uv,
+      locationName: payload.locationName,
+      hourlyForecast: payload.hourlyForecast,
+      fromCache: payload.fromCache ?? false,
+      cacheAgeMinutes: payload.cacheAgeMinutes ?? 0,
+    });
+
+    setFetchedAt(new Date());
+    setShowMapModal(false);
+  }, [setUVDataOverrides]);
+
   return (
     <div className="flex flex-col gap-6">
-
       {/* Alerts */}
       {currentUV >= 6 && !uvLoading && (
         <div className="bg-[#fff7ed] border border-[#ff6900] rounded-xl px-5 py-4 flex items-start gap-3">
           <AlertTriangle size={18} className="text-[#0a0a0a] mt-0.5 shrink-0" />
           <div>
-            <p className="text-[#7e2a0c] text-[14px] font-medium">High UV Alert</p>
-            <p className="text-[#9f2d00] text-[14px]">UV is currently {currentUV} in {locationName}. Apply SPF 50+ and seek shade during peak hours.</p>
+            <p className="text-[#7e2a0c] text-[14px] font-medium">
+              High UV Alert
+            </p>
+            <p className="text-[#9f2d00] text-[14px]">
+              UV is currently {currentUV} in {locationName}. Apply SPF 50+ and
+              seek shade during peak hours.
+            </p>
           </div>
         </div>
       )}
       {currentUV >= 3 && currentUV <= 5 && !uvLoading && (
         <div className="bg-[#fefce8] border border-[#fde68a] rounded-xl px-5 py-3 flex items-center gap-3">
           <Sun size={16} className="text-[#F0B100] shrink-0" />
-          <p className="text-[#713f12] text-[13px]">UV is {currentUV} — sunscreen is required from UV 3 and above. Apply <strong>SPF 50+</strong> before heading out.</p>
+          <p className="text-[#713f12] text-[13px]">
+            UV is {currentUV} — sunscreen is required from UV 3 and above. Apply{" "}
+            <strong>SPF 50+</strong> before heading out.
+          </p>
         </div>
       )}
 
@@ -271,104 +307,193 @@ export default function DashboardPage() {
       <div className="bg-gradient-to-r from-[#fff7ed] to-[#fefce8] border border-[#fde68a] rounded-xl px-4 py-3 flex items-start gap-3">
         <Lightbulb size={16} className="text-[#F0B100] shrink-0 mt-0.5" />
         <div className="flex-1 min-w-0">
-          <span className="text-[11px] font-bold text-[#b45309] uppercase tracking-wide">Did you know?</span>
-          <p className="text-[#713f12] text-[13px] mt-0.5 leading-snug">{UV_FACTS[factIndex]}</p>
+          <span className="text-[11px] font-bold text-[#b45309] uppercase tracking-wide">
+            Did you know?
+          </span>
+          <p className="text-[#713f12] text-[13px] mt-0.5 leading-snug">
+            {UV_FACTS[factIndex]}
+          </p>
         </div>
         <button
-          onClick={() => setFactIndex(i => (i + 1) % UV_FACTS.length)}
+          onClick={() => setFactIndex((i) => (i + 1) % UV_FACTS.length)}
           className="text-[11px] text-[#b45309] hover:text-[#FF6900] font-medium shrink-0 cursor-pointer underline-offset-2 hover:underline"
-        >Next &rsaquo;</button>
+        >
+          Next &rsaquo;
+        </button>
       </div>
 
       {/* Top stat cards */}
       <div className="grid grid-cols-1 lg:grid-cols-[2fr_1fr_1fr] gap-6">
-
         {/* Current UV card */}
         <div className="bg-white rounded-2xl border border-black/10 p-6">
           <div className="flex items-start justify-between mb-3">
             <div>
-              <h3 className="text-[#0a0a0a] text-[16px] font-medium">Current UV Index</h3>
-              <p className="text-[#717182] text-[13px] mt-0.5">Real-time UV radiation level</p>
+              <h3 className="text-[#0a0a0a] text-[16px] font-medium">
+                Current UV Index
+              </h3>
+              <p className="text-[#717182] text-[13px] mt-0.5">
+                Real-time UV radiation level
+              </p>
             </div>
             {!uvLoading && (
-              <span className={`flex items-center gap-1 text-[11px] px-2 py-1 rounded-lg border shrink-0 ${
-                uvFromCache ? "bg-amber-50 border-amber-200 text-amber-700" : "bg-green-50 border-green-200 text-green-700"
-              }`}>
+              <span
+                className={`flex items-center gap-1 text-[11px] px-2 py-1 rounded-lg border shrink-0 ${
+                  uvFromCache
+                    ? "bg-amber-50 border-amber-200 text-amber-700"
+                    : "bg-green-50 border-green-200 text-green-700"
+                }`}
+              >
                 {uvFromCache ? <Zap size={11} /> : <RefreshCw size={11} />}
-                {uvFromCache ? `Cached ${uvCacheAgeMinutes === 0 ? "just now" : `${uvCacheAgeMinutes}min ago`}` : "Live"}
+                {uvFromCache
+                  ? `Cached ${uvCacheAgeMinutes === 0 ? "just now" : `${uvCacheAgeMinutes}min ago`}`
+                  : "Live"}
               </span>
             )}
           </div>
 
           {/* Search bar */}
-          <form onSubmit={handleSearchLocation} className="flex items-center gap-2 mb-3">
+          <form
+            onSubmit={handleSearchLocation}
+            className="flex items-center gap-2 mb-3"
+          >
             <div className="relative flex-1">
-              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-              <input ref={searchInputRef} type="text" value={searchQuery}
-                onChange={(e) => { setSearchQuery(e.target.value); setSearchError(null); }}
+              <Search
+                size={14}
+                className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"
+              />
+              <input
+                ref={searchInputRef}
+                type="text"
+                value={searchQuery}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value);
+                  setSearchError(null);
+                }}
                 placeholder="Search city or suburb..."
                 className="w-full pl-8 pr-8 py-2 text-[13px] border border-black/10 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#FF6900]/30 focus:border-[#FF6900] bg-gray-50 text-[#101828] placeholder-gray-400"
               />
               {searchQuery && (
-                <button type="button" onClick={() => { setSearchQuery(""); setSearchError(null); searchInputRef.current?.focus(); }}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 cursor-pointer">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSearchQuery("");
+                    setSearchError(null);
+                    searchInputRef.current?.focus();
+                  }}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 cursor-pointer"
+                >
                   <X size={13} />
                 </button>
               )}
             </div>
-            <button type="submit" disabled={searching || !searchQuery.trim()}
-              className="flex items-center gap-1.5 px-3 py-2 bg-[#FF6900] hover:bg-[#E55E00] disabled:opacity-50 text-white text-[13px] font-medium rounded-lg transition-colors cursor-pointer shrink-0">
-              {searching ? <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <Search size={13} />}
+            <button
+              type="submit"
+              disabled={searching || !searchQuery.trim()}
+              className="flex items-center gap-1.5 px-3 py-2 bg-[#FF6900] hover:bg-[#E55E00] disabled:opacity-50 text-white text-[13px] font-medium rounded-lg transition-colors cursor-pointer shrink-0"
+            >
+              {searching ? (
+                <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <Search size={13} />
+              )}
               {searching ? "Searching..." : "Search"}
             </button>
-            <button type="button" onClick={handleUseMyLocation} disabled={locating} title="Use my GPS location"
-              className="flex items-center gap-1 px-3 py-2 border border-black/10 rounded-lg text-[13px] text-[#4a5565] hover:text-[#FF6900] hover:border-[#FF6900] hover:bg-orange-50 transition-colors disabled:opacity-60 cursor-pointer shrink-0">
-              <LocateFixed size={13} className={locating ? "animate-pulse text-[#FF6900]" : ""} />
+            <button
+              type="button"
+              onClick={handleUseMyLocation}
+              disabled={locating}
+              title="Use my GPS location"
+              className="flex items-center gap-1 px-3 py-2 border border-black/10 rounded-lg text-[13px] text-[#4a5565] hover:text-[#FF6900] hover:border-[#FF6900] hover:bg-orange-50 transition-colors disabled:opacity-60 cursor-pointer shrink-0"
+            >
+              <LocateFixed
+                size={13}
+                className={locating ? "animate-pulse text-[#FF6900]" : ""}
+              />
               {locating ? "Locating..." : "GPS"}
             </button>
           </form>
 
           {(locError || searchError) && (
-            <p className="mb-2 text-[12px] text-red-500 flex items-center gap-1"><AlertTriangle size={12} />{locError || searchError}</p>
+            <p className="mb-2 text-[12px] text-red-500 flex items-center gap-1">
+              <AlertTriangle size={12} />
+              {locError || searchError}
+            </p>
           )}
 
           {uvLoading || locating || searching ? (
             <div className="flex items-center justify-center h-[100px]">
               <div className="flex flex-col items-center gap-2">
                 <div className="w-7 h-7 border-2 border-[#FF6900] border-t-transparent rounded-full animate-spin" />
-                <p className="text-[#717182] text-[12px]">{locating ? "Getting your location..." : searching ? "Searching location..." : "Fetching live UV data..."}</p>
+                <p className="text-[#717182] text-[12px]">
+                  {locating
+                    ? "Getting your location..."
+                    : searching
+                      ? "Searching location..."
+                      : "Fetching live UV data..."}
+                </p>
               </div>
             </div>
           ) : (
             <div className="flex items-start justify-between">
               <div>
                 <div className="flex items-end gap-2">
-                  <span className="text-[#101828] text-[56px] font-bold leading-none">{currentUV}</span>
+                  <span className="text-[#101828] text-[56px] font-bold leading-none">
+                    {currentUV}
+                  </span>
                   <div className="mb-1">
-                    <span className="bg-[var(--badge-color)] text-white text-[12px] px-2 py-0.5 rounded-lg font-medium"
-                      style={{ "--badge-color": riskColor } as CSSProperties}>{riskLevel}</span>
-                    <p className="text-[#4a5565] text-[13px] mt-1">{getUVRange(currentUV)}</p>
+                    <span
+                      className="bg-[var(--badge-color)] text-white text-[12px] px-2 py-0.5 rounded-lg font-medium"
+                      style={{ "--badge-color": riskColor } as CSSProperties}
+                    >
+                      {riskLevel}
+                    </span>
+                    <p className="text-[#4a5565] text-[13px] mt-1">
+                      {getUVRange(currentUV)}
+                    </p>
                   </div>
                 </div>
                 <div className="flex items-center gap-1.5 mt-1.5">
                   <MapPin size={12} className="text-[#F54900] shrink-0" />
-                  <span className="text-[#4a5565] text-[13px] font-medium">{locationName}</span>
+                  <span className="text-[#4a5565] text-[13px] font-medium">
+                    {locationName}
+                  </span>
                   {fetchedAt && (
-                    <span className="text-[11px] text-[#9ca3af] ml-1 flex items-center gap-1"><Clock size={11} />{formatFetchTime(fetchedAt)}</span>
+                    <span className="text-[11px] text-[#9ca3af] ml-1 flex items-center gap-1">
+                      <Clock size={11} />
+                      {formatFetchTime(fetchedAt)}
+                    </span>
                   )}
                 </div>
+
+                <button
+                  type="button"
+                  onClick={() => setShowMapModal(true)}
+                  className="mt-3 inline-flex items-center gap-2 px-3 py-2 text-[13px] font-medium rounded-lg border border-black/10 text-[#4a5565] hover:text-[#FF6900] hover:border-[#FF6900] hover:bg-orange-50 transition-colors cursor-pointer"
+                >
+                  <MapPin size={14} />
+                  Choose from map
+                </button>
                 <p className="text-[#4a5565] text-[13px] mt-2">
-                  {currentUV <= 2 ? "UV is low — no sun protection needed right now."
-                    : currentUV <= 5 ? "Sunscreen required. Apply SPF 50+ before going outside."
-                    : "High UV — SPF 50+ essential. Seek shade during peak hours."}
+                  {currentUV <= 2
+                    ? "UV is low — no sun protection needed right now."
+                    : currentUV <= 5
+                      ? "Sunscreen required. Apply SPF 50+ before going outside."
+                      : "High UV — SPF 50+ essential. Seek shade during peak hours."}
                 </p>
               </div>
               <div className="flex flex-col gap-1.5 shrink-0">
-                <p className="text-[#364153] text-[11px] font-semibold">UV Scale</p>
-                {uvScale.map(item => (
+                <p className="text-[#364153] text-[11px] font-semibold">
+                  UV Scale
+                </p>
+                {uvScale.map((item) => (
                   <div key={item.label} className="flex items-center gap-1.5">
-                    <div className="w-3 h-3 rounded" style={{ backgroundColor: item.color }} />
-                    <span className="text-[#4a5565] text-[11px]">{item.label}</span>
+                    <div
+                      className="w-3 h-3 rounded"
+                      style={{ backgroundColor: item.color }}
+                    />
+                    <span className="text-[#4a5565] text-[11px]">
+                      {item.label}
+                    </span>
                   </div>
                 ))}
               </div>
@@ -380,23 +505,68 @@ export default function DashboardPage() {
         <div className="bg-white rounded-2xl border border-black/10 p-6 flex flex-col">
           <div className="flex items-center gap-2">
             <Shield size={18} className="text-[#155dfc]" />
-            <h3 className="text-[#0a0a0a] text-[16px] font-medium">Risk Level</h3>
+            <h3 className="text-[#0a0a0a] text-[16px] font-medium">
+              Risk Level
+            </h3>
           </div>
           <div className="mt-5 flex-1 flex flex-col justify-between">
-            {uvLoading ? <div className="h-8 w-24 bg-gray-100 rounded-lg animate-pulse" /> : (
+            {uvLoading ? (
+              <div className="h-8 w-24 bg-gray-100 rounded-lg animate-pulse" />
+            ) : (
               <>
-                <p className={`text-[30px] font-extrabold leading-tight ${riskDescColor}`}>{riskLevel}</p>
-                <p className="text-[#4a5565] text-[13px] mt-2 leading-snug">{getRiskDescription(currentUV)}</p>
+                <p
+                  className={`text-[30px] font-extrabold leading-tight ${riskDescColor}`}
+                >
+                  {riskLevel}
+                </p>
+                <p className="text-[#4a5565] text-[13px] mt-2 leading-snug">
+                  {getRiskDescription(currentUV)}
+                </p>
                 <div className="mt-4 flex flex-wrap gap-2">
                   {[
-                    currentUV <= 2  && { label: "No SPF needed",     bg: "bg-green-50",  text: "text-green-700",  border: "border-green-200" },
-                    currentUV >= 3 && currentUV <= 5  && { label: "SPF 50+ advised",  bg: "bg-yellow-50", text: "text-yellow-700", border: "border-yellow-200" },
-                    currentUV >= 6 && currentUV <= 7  && { label: "SPF 50+ required", bg: "bg-orange-50", text: "text-orange-700", border: "border-orange-200" },
-                    currentUV >= 8 && currentUV <= 10 && { label: "Max protection",   bg: "bg-red-50",    text: "text-red-700",   border: "border-red-200" },
-                    currentUV >= 11 && { label: "Stay indoors",      bg: "bg-purple-50", text: "text-purple-700", border: "border-purple-200" },
-                  ].filter(Boolean).map((pill: any) => (
-                    <span key={pill.label} className={`text-[11px] font-semibold px-2.5 py-1 rounded-full border ${pill.bg} ${pill.text} ${pill.border}`}>{pill.label}</span>
-                  ))}
+                    currentUV <= 2 && {
+                      label: "No SPF needed",
+                      bg: "bg-green-50",
+                      text: "text-green-700",
+                      border: "border-green-200",
+                    },
+                    currentUV >= 3 &&
+                      currentUV <= 5 && {
+                        label: "SPF 50+ advised",
+                        bg: "bg-yellow-50",
+                        text: "text-yellow-700",
+                        border: "border-yellow-200",
+                      },
+                    currentUV >= 6 &&
+                      currentUV <= 7 && {
+                        label: "SPF 50+ required",
+                        bg: "bg-orange-50",
+                        text: "text-orange-700",
+                        border: "border-orange-200",
+                      },
+                    currentUV >= 8 &&
+                      currentUV <= 10 && {
+                        label: "Max protection",
+                        bg: "bg-red-50",
+                        text: "text-red-700",
+                        border: "border-red-200",
+                      },
+                    currentUV >= 11 && {
+                      label: "Stay indoors",
+                      bg: "bg-purple-50",
+                      text: "text-purple-700",
+                      border: "border-purple-200",
+                    },
+                  ]
+                    .filter(Boolean)
+                    .map((pill: any) => (
+                      <span
+                        key={pill.label}
+                        className={`text-[11px] font-semibold px-2.5 py-1 rounded-full border ${pill.bg} ${pill.text} ${pill.border}`}
+                      >
+                        {pill.label}
+                      </span>
+                    ))}
                 </div>
               </>
             )}
@@ -407,17 +577,31 @@ export default function DashboardPage() {
         <div className="bg-white rounded-2xl border border-black/10 p-6 flex flex-col">
           <div className="flex items-center gap-2">
             <Clock size={18} className="text-[#9810fa]" />
-            <h3 className="text-[#0a0a0a] text-[16px] font-medium">Peak Hours</h3>
+            <h3 className="text-[#0a0a0a] text-[16px] font-medium">
+              Peak Hours
+            </h3>
           </div>
           <div className="mt-5 flex-1 flex flex-col justify-between">
-            {uvLoading ? <div className="h-8 w-28 bg-gray-100 rounded-lg animate-pulse" /> : (
+            {uvLoading ? (
+              <div className="h-8 w-28 bg-gray-100 rounded-lg animate-pulse" />
+            ) : (
               <>
-                <p className="text-[#101828] text-[24px] font-extrabold leading-tight">{peakHours}</p>
-                <p className="text-[#4a5565] text-[13px] mt-2 leading-snug">{getPeakHoursDescription(peakHours)}</p>
+                <p className="text-[#101828] text-[24px] font-extrabold leading-tight">
+                  {peakHours}
+                </p>
+                <p className="text-[#4a5565] text-[13px] mt-2 leading-snug">
+                  {getPeakHoursDescription(peakHours)}
+                </p>
                 <div className="mt-4">
-                  {peakHours === "No peak hours today"
-                    ? <span className="text-[11px] font-semibold px-2.5 py-1 rounded-full border bg-green-50 text-green-700 border-green-200">&#10003; Safe all day</span>
-                    : <span className="text-[11px] font-semibold px-2.5 py-1 rounded-full border bg-orange-50 text-orange-700 border-orange-200">&#9888; Seek shade &amp; reapply SPF</span>}
+                  {peakHours === "No peak hours today" ? (
+                    <span className="text-[11px] font-semibold px-2.5 py-1 rounded-full border bg-green-50 text-green-700 border-green-200">
+                      &#10003; Safe all day
+                    </span>
+                  ) : (
+                    <span className="text-[11px] font-semibold px-2.5 py-1 rounded-full border bg-orange-50 text-orange-700 border-orange-200">
+                      &#9888; Seek shade &amp; reapply SPF
+                    </span>
+                  )}
                 </div>
               </>
             )}
@@ -430,15 +614,21 @@ export default function DashboardPage() {
         <div className="flex items-center justify-between mb-1">
           <div className="flex items-center gap-2">
             <TrendingUp size={18} className="text-[#F54900]" />
-            <h3 className="text-[#0a0a0a] text-[16px] font-medium">12-Hour UV Forecast</h3>
+            <h3 className="text-[#0a0a0a] text-[16px] font-medium">
+              12-Hour UV Forecast
+            </h3>
           </div>
           {!uvLoading && locationName && (
             <div className="flex items-center gap-1.5 text-[12px] text-[#6B7280]">
-              <MapPin size={12} className="text-[#F54900]" /><span>{locationName}</span>
+              <MapPin size={12} className="text-[#F54900]" />
+              <span>{locationName}</span>
             </div>
           )}
         </div>
-        <p className="text-[#717182] text-[13px] mb-4">Plan your outdoor activities safely — SPF 50+ required when UV reaches 3</p>
+        <p className="text-[#717182] text-[13px] mb-4">
+          Plan your outdoor activities safely — SPF 50+ required when UV reaches
+          3
+        </p>
         {uvLoading ? (
           <div className="h-[240px] flex items-center justify-center">
             <div className="flex flex-col items-center gap-2">
@@ -448,31 +638,97 @@ export default function DashboardPage() {
           </div>
         ) : hourlyForecast.length === 0 ? (
           <div className="h-[240px] flex items-center justify-center">
-            <p className="text-[#717182] text-[13px]">No forecast data available.</p>
+            <p className="text-[#717182] text-[13px]">
+              No forecast data available.
+            </p>
           </div>
         ) : (
           <div className="h-[240px] w-full">
-            <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
+            <ResponsiveContainer
+              width="100%"
+              height="100%"
+              minWidth={0}
+              minHeight={0}
+            >
               <AreaChart data={hourlyForecast}>
                 <defs>
                   <linearGradient id="uvGradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor={forecastColor} stopOpacity={0.75} />
-                    <stop offset="95%" stopColor={forecastColor} stopOpacity={0.05} />
+                    <stop
+                      offset="5%"
+                      stopColor={forecastColor}
+                      stopOpacity={0.75}
+                    />
+                    <stop
+                      offset="95%"
+                      stopColor={forecastColor}
+                      stopOpacity={0.05}
+                    />
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
-                <XAxis dataKey="time" tick={{ fontSize: 11, fill: "#6B7280" }} axisLine={{ stroke: "#6B7280" }} tickLine={{ stroke: "#6B7280" }} />
-                <YAxis tick={{ fontSize: 11, fill: "#6B7280" }} axisLine={{ stroke: "#6B7280" }} tickLine={{ stroke: "#6B7280" }}
-                  label={{ value: "UV Index", angle: -90, position: "insideLeft", style: { fontSize: 11, fill: "#808080" } }}
-                  domain={[0, yAxisMax]} allowDecimals={false} />
-                <ReferenceLine y={3} stroke="#F0B100" strokeDasharray="4 4" label={{ value: "SPF 50+ required", position: "insideTopRight", fontSize: 10, fill: "#b45309" }} />
-                <ReferenceLine y={6} stroke="#FF6900" strokeDasharray="4 4" label={{ value: "High",   position: "insideTopRight", fontSize: 10, fill: "#FF6900" }} />
-                <ReferenceLine y={8} stroke="#FB2C36" strokeDasharray="4 4" label={{ value: "V.High", position: "insideTopRight", fontSize: 10, fill: "#FB2C36" }} />
+                <XAxis
+                  dataKey="time"
+                  tick={{ fontSize: 11, fill: "#6B7280" }}
+                  axisLine={{ stroke: "#6B7280" }}
+                  tickLine={{ stroke: "#6B7280" }}
+                />
+                <YAxis
+                  tick={{ fontSize: 11, fill: "#6B7280" }}
+                  axisLine={{ stroke: "#6B7280" }}
+                  tickLine={{ stroke: "#6B7280" }}
+                  label={{
+                    value: "UV Index",
+                    angle: -90,
+                    position: "insideLeft",
+                    style: { fontSize: 11, fill: "#808080" },
+                  }}
+                  domain={[0, yAxisMax]}
+                  allowDecimals={false}
+                />
+                <ReferenceLine
+                  y={3}
+                  stroke="#F0B100"
+                  strokeDasharray="4 4"
+                  label={{
+                    value: "SPF 50+ required",
+                    position: "insideTopRight",
+                    fontSize: 10,
+                    fill: "#b45309",
+                  }}
+                />
+                <ReferenceLine
+                  y={6}
+                  stroke="#FF6900"
+                  strokeDasharray="4 4"
+                  label={{
+                    value: "High",
+                    position: "insideTopRight",
+                    fontSize: 10,
+                    fill: "#FF6900",
+                  }}
+                />
+                <ReferenceLine
+                  y={8}
+                  stroke="#FB2C36"
+                  strokeDasharray="4 4"
+                  label={{
+                    value: "V.High",
+                    position: "insideTopRight",
+                    fontSize: 10,
+                    fill: "#FB2C36",
+                  }}
+                />
                 <Tooltip content={<CustomTooltip />} />
-                <Area type="monotone" dataKey="uv" stroke={forecastColor} strokeWidth={2.5}
-                  fill="url(#uvGradient)" name="UV Index"
+                <Area
+                  type="monotone"
+                  dataKey="uv"
+                  stroke={forecastColor}
+                  strokeWidth={2.5}
+                  fill="url(#uvGradient)"
+                  name="UV Index"
                   dot={{ fill: forecastColor, r: 3, strokeWidth: 0 }}
-                  activeDot={{ r: 5, fill: forecastColor, strokeWidth: 0 }} />
+                  activeDot={{ r: 5, fill: forecastColor, strokeWidth: 0 }}
+                />
               </AreaChart>
             </ResponsiveContainer>
           </div>
@@ -480,24 +736,36 @@ export default function DashboardPage() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-
         {/* Sunscreen Recommendation */}
         <div className="bg-white rounded-2xl border border-black/10 p-5">
           <div className="flex items-start justify-between mb-1">
             <div>
-              <h3 className="text-[#0a0a0a] text-[15px] font-semibold">Sunscreen Recommendation</h3>
-              <p className="text-[#717182] text-[12px] mt-0.5">Based on current UV — SPF 50+ required at UV 3+ (WHO / Cancer Council AU)</p>
+              <h3 className="text-[#0a0a0a] text-[15px] font-semibold">
+                Sunscreen Recommendation
+              </h3>
+              <p className="text-[#717182] text-[12px] mt-0.5">
+                Based on current UV — SPF 50+ required at UV 3+ (WHO / Cancer
+                Council AU)
+              </p>
             </div>
             {recSource === "fallback" && (
-              <span className="text-[10px] text-[#6a7282] bg-gray-100 px-2 py-0.5 rounded-lg border border-black/5 shrink-0">Built-in</span>
+              <span className="text-[10px] text-[#6a7282] bg-gray-100 px-2 py-0.5 rounded-lg border border-black/5 shrink-0">
+                Built-in
+              </span>
             )}
           </div>
-          <div className={`mt-3 ${recCardStyle.bg} border ${recCardStyle.border} rounded-xl px-4 py-3 flex items-start gap-3`}>
-            <Sun size={18} className={`${recCardStyle.iconColor} mt-0.5 shrink-0`} />
+          <div
+            className={`mt-3 ${recCardStyle.bg} border ${recCardStyle.border} rounded-xl px-4 py-3 flex items-start gap-3`}
+          >
+            <Sun
+              size={18}
+              className={`${recCardStyle.iconColor} mt-0.5 shrink-0`}
+            />
             <div className="flex-1">
               <p className="text-[#101828] text-[13px] font-semibold">
                 {sunscreenRec
-                  ? currentUV <= 2 ? "No sunscreen required at UV 0-2."
+                  ? currentUV <= 2
+                    ? "No sunscreen required at UV 0-2."
                     : `${sunscreenRec.spfLevel} required — UV is ${currentUV} (${riskLevel}).`
                   : "Loading recommendation..."}
               </p>
@@ -514,14 +782,28 @@ export default function DashboardPage() {
                     "Use broad-spectrum (UVA + UVB) SPF 50+",
                     "Protect lips with SPF 30+ lip balm",
                     currentUV >= 6 ? "Seek shade between 10 am and 3 pm" : null,
-                    currentUV >= 6 ? "Wear a broad-brimmed hat (brim 7.5 cm+)" : null,
-                    currentUV >= 8 ? "Wear long sleeves and sun-protective clothing" : null,
-                    currentUV >= 8 ? "Minimise outdoor time during peak hours" : null,
-                  ].filter(Boolean).map(tip => (
-                    <div key={tip} className="flex items-start gap-2 text-[12px] text-[#4a5565]">
-                      <span className="text-[#FF6900] mt-0.5 shrink-0">&#10003;</span>{tip}
-                    </div>
-                  ))}
+                    currentUV >= 6
+                      ? "Wear a broad-brimmed hat (brim 7.5 cm+)"
+                      : null,
+                    currentUV >= 8
+                      ? "Wear long sleeves and sun-protective clothing"
+                      : null,
+                    currentUV >= 8
+                      ? "Minimise outdoor time during peak hours"
+                      : null,
+                  ]
+                    .filter(Boolean)
+                    .map((tip) => (
+                      <div
+                        key={tip}
+                        className="flex items-start gap-2 text-[12px] text-[#4a5565]"
+                      >
+                        <span className="text-[#FF6900] mt-0.5 shrink-0">
+                          &#10003;
+                        </span>
+                        {tip}
+                      </div>
+                    ))}
                 </div>
               )}
             </div>
@@ -533,23 +815,41 @@ export default function DashboardPage() {
           <div>
             <div className="flex items-center gap-2 mb-0.5">
               <Info size={16} className="text-[#155dfc]" />
-              <h3 className="text-[#0a0a0a] text-[15px] font-semibold">Health Effects at UV {currentUV}</h3>
+              <h3 className="text-[#0a0a0a] text-[15px] font-semibold">
+                Health Effects at UV {currentUV}
+              </h3>
             </div>
-            <p className="text-[#717182] text-[12px]">What UV {currentUV} ({riskLevel}) means for your body right now</p>
+            <p className="text-[#717182] text-[12px]">
+              What UV {currentUV} ({riskLevel}) means for your body right now
+            </p>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            {healthEffects.map(effect => {
+            {healthEffects.map((effect) => {
               const iconEl =
-                effect.icon === "skin"   ? <Sun size={14} className="text-[#FF6900]" /> :
-                effect.icon === "eye"    ? <Eye size={14} className="text-[#155dfc]" /> :
-                effect.icon === "dna"    ? <Zap size={14} className="text-[#9810fa]" /> :
-                                          <Shield size={14} className="text-[#16a34a]" />;
+                effect.icon === "skin" ? (
+                  <Sun size={14} className="text-[#FF6900]" />
+                ) : effect.icon === "eye" ? (
+                  <Eye size={14} className="text-[#155dfc]" />
+                ) : effect.icon === "dna" ? (
+                  <Zap size={14} className="text-[#9810fa]" />
+                ) : (
+                  <Shield size={14} className="text-[#16a34a]" />
+                );
               return (
-                <div key={effect.icon} className="flex items-start gap-3 bg-gray-50 rounded-xl px-3 py-2.5 border border-black/5">
-                  <div className="w-7 h-7 rounded-lg bg-white flex items-center justify-center shrink-0 shadow-sm border border-black/5">{iconEl}</div>
+                <div
+                  key={effect.icon}
+                  className="flex items-start gap-3 bg-gray-50 rounded-xl px-3 py-2.5 border border-black/5"
+                >
+                  <div className="w-7 h-7 rounded-lg bg-white flex items-center justify-center shrink-0 shadow-sm border border-black/5">
+                    {iconEl}
+                  </div>
                   <div>
-                    <p className="text-[12px] font-semibold text-[#101828]">{effect.label}</p>
-                    <p className="text-[11px] text-[#6a7282] leading-snug mt-0.5">{effect.effect}</p>
+                    <p className="text-[12px] font-semibold text-[#101828]">
+                      {effect.label}
+                    </p>
+                    <p className="text-[11px] text-[#6a7282] leading-snug mt-0.5">
+                      {effect.effect}
+                    </p>
                   </div>
                 </div>
               );
@@ -557,74 +857,160 @@ export default function DashboardPage() {
           </div>
           <div className="bg-[#eff6ff] border border-blue-100 rounded-xl px-3 py-2.5">
             <p className="text-[11px] text-[#1d4ed8] leading-snug">
-              <span className="font-semibold">Cumulative damage:</span> UV damage builds up over your lifetime and cannot be reversed. Each exposure — even without sunburn — increases long-term skin cancer risk. (Skin Cancer Foundation)
+              <span className="font-semibold">Cumulative damage:</span> UV
+              damage builds up over your lifetime and cannot be reversed. Each
+              exposure — even without sunburn — increases long-term skin cancer
+              risk. (Skin Cancer Foundation)
             </p>
           </div>
         </div>
-
-
       </div>
-      
-      
 
-      {/* Protection Checklist + Map */}
+            {/* Protection Checklist + Learn Card */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-
         {/* Protection Checklist */}
         <div className="bg-white rounded-2xl border border-black/10 p-5 flex flex-col gap-3">
           <div>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Umbrella size={16} className="text-[#FF6900]" />
-                <h3 className="text-[#0a0a0a] text-[15px] font-semibold">Protection Checklist</h3>
+                <h3 className="text-[#0a0a0a] text-[15px] font-semibold">
+                  Protection Checklist
+                </h3>
               </div>
-              <button onClick={() => setShowChecklist(v => !v)}
-                className="text-[#9ca3af] hover:text-[#4a5565] cursor-pointer transition-colors">
-                {showChecklist ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+              <button
+                onClick={() => setShowChecklist((v) => !v)}
+                className="text-[#9ca3af] hover:text-[#4a5565] cursor-pointer transition-colors"
+              >
+                {showChecklist ? (
+                  <ChevronUp size={16} />
+                ) : (
+                  <ChevronDown size={16} />
+                )}
               </button>
             </div>
             <p className="text-[#717182] text-[12px] mt-0.5">
-              {currentUV < 3 ? "No protection needed at UV below 3" : `${activeChecklist.length} measures recommended at UV ${currentUV}`}
+              {currentUV < 3
+                ? "No protection needed at UV below 3"
+                : `${activeChecklist.length} measures recommended at UV ${currentUV}`}
             </p>
           </div>
+
           {showChecklist && (
             <div className="flex flex-col gap-2">
               {checklist.map((item, i) => (
-                <div key={i} className={`flex items-start gap-3 rounded-xl px-3 py-2.5 border ${
-                  item.done ? "bg-[#f0fdf4] border-green-100" : "bg-gray-50 border-black/5 opacity-40"
-                }`}>
-                  <div className={`w-4 h-4 rounded-full shrink-0 mt-0.5 flex items-center justify-center ${
-                    item.done ? "bg-[#16a34a]" : "bg-gray-200"
-                  }`}>
-                    {item.done && <span className="text-white text-[9px] font-bold">&#10003;</span>}
+                <div
+                  key={i}
+                  className={`flex items-start gap-3 rounded-xl px-3 py-2.5 border ${
+                    item.done
+                      ? "bg-[#f0fdf4] border-green-100"
+                      : "bg-gray-50 border-black/5 opacity-40"
+                  }`}
+                >
+                  <div
+                    className={`w-4 h-4 rounded-full shrink-0 mt-0.5 flex items-center justify-center ${
+                      item.done ? "bg-[#16a34a]" : "bg-gray-200"
+                    }`}
+                  >
+                    {item.done && (
+                      <span className="text-white text-[9px] font-bold">
+                        &#10003;
+                      </span>
+                    )}
                   </div>
-                  <p className={`text-[12px] leading-snug ${item.done ? "text-[#101828] font-medium" : "text-[#6a7282]"}`}>{item.label}</p>
+                  <p
+                    className={`text-[12px] leading-snug ${
+                      item.done ? "text-[#101828] font-medium" : "text-[#6a7282]"
+                    }`}
+                  >
+                    {item.label}
+                  </p>
                 </div>
               ))}
             </div>
           )}
+
           <div className="bg-[#fff7ed] border border-[#ffcf99] rounded-xl px-3 py-2.5 mt-auto">
             <p className="text-[11px] text-[#7e2a0c] leading-snug">
-              <span className="font-semibold">&#127462;&#127482; Australia:</span> 2 in 3 Australians will develop skin cancer by age 70 — the world&apos;s highest rate. Consistent daily protection is the most effective prevention. (ARPANSA)
+              <span className="font-semibold">&#127462;&#127482; Australia:</span>{" "}
+              2 in 3 Australians will develop skin cancer by age 70 — the
+              world&apos;s highest rate. Consistent daily protection is the most
+              effective prevention. (ARPANSA)
             </p>
           </div>
         </div>
 
-        {/* Interactive Map */}
-        <div className="bg-white rounded-2xl border border-black/10 p-5 flex flex-col">
-          <div className="flex items-center gap-2 mb-1">
-            <MapPin size={16} className="text-[#F54900]" />
-            <h3 className="text-[#0a0a0a] text-[15px] font-medium">Interactive UV Map</h3>
+        {/* Learn Card */}
+        <button
+          type="button"
+          onClick={() => navigate("/dashboard/education")}
+          className="bg-white rounded-2xl border border-black/10 p-5 text-left flex flex-col justify-between min-h-[260px] hover:border-[#FF6900] hover:bg-orange-50/30 transition-colors cursor-pointer"
+        >
+          <div>
+            <div className="w-11 h-11 rounded-xl bg-[#fff7ed] border border-[#fed7aa] flex items-center justify-center mb-4">
+              <BookOpen size={20} className="text-[#FF6900]" />
+            </div>
+
+            <h3 className="text-[#0a0a0a] text-[15px] font-semibold">
+              Learn About Sun Safety
+            </h3>
+
+            <p className="text-[#717182] text-[12px] mt-1">
+              Explore practical guidance, UV myths, behaviour insights, and
+              prevention facts.
+            </p>
+
+            <div className="mt-5 space-y-2">
+              <div className="flex items-start gap-2 text-[12px] text-[#4a5565]">
+                <span className="text-[#FF6900] mt-0.5">&#10003;</span>
+                <span>Understand what different UV levels mean</span>
+              </div>
+              <div className="flex items-start gap-2 text-[12px] text-[#4a5565]">
+                <span className="text-[#FF6900] mt-0.5">&#10003;</span>
+                <span>Learn common myths and protective behaviours</span>
+              </div>
+              <div className="flex items-start gap-2 text-[12px] text-[#4a5565]">
+                <span className="text-[#FF6900] mt-0.5">&#10003;</span>
+                <span>Build safer daily habits beyond sunscreen alone</span>
+              </div>
+            </div>
           </div>
-          <p className="text-[#717182] text-[12px] mb-3">Tap any location to get local UV details</p>
-          <div className="flex-1 min-h-[300px]">
-            <UVMap currentUv={currentUV} onLocationSelect={(payload) => setUVDataOverrides(payload)} initialLocation={savedLocation} />
+
+          <div className="mt-6 flex items-center justify-between">
+            <span className="text-[12px] text-[#9ca3af]">Education hub</span>
+            <span className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-[#FF6900] text-white text-[12px] font-medium">
+              Explore
+              <ArrowRight size={14} />
+            </span>
           </div>
-        </div>
+        </button>
       </div>
 
-      
+      {/* Interactive Map */}
+      <Dialog open={showMapModal} onOpenChange={setShowMapModal}>
+        <DialogContent className="max-w-4xl w-[95vw]">
+          <DialogHeader>
+            <DialogTitle>Select a location from the map</DialogTitle>
+            <DialogDescription>
+              Choose a location on the map to update the current UV index and
+              forecast.
+            </DialogDescription>
+          </DialogHeader>
 
+          <div className="mt-2">
+            {showMapModal && (
+              <UVMap
+                key="uv-map-modal"
+                onLocationSelect={handleMapLocationSelect}
+                currentUv={currentUV}
+                initialLocation={locationName}
+                isInModal={true}
+              />
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
+
